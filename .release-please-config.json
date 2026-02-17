@@ -1,0 +1,11 @@
+{
+  "release-type": "python",
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "package-name": "pan-kontaktliste"
+    }
+  },
+  "changelog-path": "CHANGELOG.md",
+  "include-component-in-tag": false
+}
