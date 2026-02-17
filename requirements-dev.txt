@@ -1,0 +1,4 @@
+# Development and code quality (install with: pip install -r requirements-dev.txt)
+-r requirements.txt
+pre-commit>=4.0.0
+ruff>=0.8.0

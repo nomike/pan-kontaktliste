@@ -1,0 +1,32 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Generated / build artifacts
+*.pdf
+test_contact_list.html
+*.tex
+*.log
+*.aux
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.mypy_cache/
+.ruff_cache/
+
+# Excel data (ignore sample sign-up files)
+*.xlsx
+*.xls
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
