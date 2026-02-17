@@ -33,12 +33,16 @@ class MainFrame(wx.Frame):
         super().__init__(None, title="PAN Kontaktliste", size=(580, 260))
         self.SetMinSize((520, 240))
 
-        panel = wx.Panel(self)
+        self._panel = wx.Panel(self)
+        panel = self._panel
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # Excel row
+        # Excel row (label has MinSize so it isn't clipped on Windows)
         row1 = wx.BoxSizer(wx.HORIZONTAL)
-        row1.Add(wx.StaticText(panel, label="Excel-Datei:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        lbl_xlsx = wx.StaticText(panel, label="Excel-Datei:")
+        w = lbl_xlsx.GetTextExtent("Excel-Datei:")[0]
+        lbl_xlsx.SetMinSize((max(w, 100) + 8, -1))
+        row1.Add(lbl_xlsx, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         self.xlsx_path = wx.TextCtrl(panel, value="", size=(320, -1))
         row1.Add(self.xlsx_path, 1, wx.EXPAND | wx.RIGHT, 6)
         btn_xlsx = wx.Button(panel, label="Durchsuchen ...")
@@ -46,9 +50,12 @@ class MainFrame(wx.Frame):
         row1.Add(btn_xlsx, 0)
         sizer.Add(row1, 0, wx.EXPAND | wx.ALL, 6)
 
-        # HTML row
+        # HTML row (label has MinSize so it isn't clipped on Windows)
         row2 = wx.BoxSizer(wx.HORIZONTAL)
-        row2.Add(wx.StaticText(panel, label="HTML-Datei speichern unter:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        lbl_html = wx.StaticText(panel, label="HTML-Datei speichern unter:")
+        w = lbl_html.GetTextExtent("HTML-Datei speichern unter:")[0]
+        lbl_html.SetMinSize((max(w, 220) + 8, -1))
+        row2.Add(lbl_html, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         self.html_path = wx.TextCtrl(panel, value="", size=(320, -1))
         row2.Add(self.html_path, 1, wx.EXPAND | wx.RIGHT, 6)
         btn_html = wx.Button(panel, label="Durchsuchen ...")
@@ -77,6 +84,17 @@ class MainFrame(wx.Frame):
         self.SetMenuBar(menubar)
 
         panel.SetSizer(sizer)
+        panel.Layout()
+        self.Bind(wx.EVT_SHOW, self._on_show)
+
+    def _on_show(self, event: wx.ShowEvent) -> None:
+        """Force layout on first show so the window displays correctly on Windows."""
+        if event.IsShown():
+            wx.CallAfter(self._do_layout)
+
+    def _do_layout(self) -> None:
+        self._panel.Layout()
+        self.Layout()
 
     def _on_about(self, _event: wx.CommandEvent) -> None:
         info = wx.adv.AboutDialogInfo()
