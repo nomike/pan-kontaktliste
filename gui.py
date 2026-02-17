@@ -30,12 +30,23 @@ def _resource_path(relative: str) -> Path:
 
 class MainFrame(wx.Frame):
     def __init__(self) -> None:
-        super().__init__(None, title="PAN Kontaktliste", size=(580, 260))
-        self.SetMinSize((520, 240))
+        super().__init__(None, title="PAN Kontaktliste", size=(580, 300))
+        self.SetMinSize((520, 280))
 
         self._panel = wx.Panel(self)
         panel = self._panel
         sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Meetup name row
+        row_meetup = wx.BoxSizer(wx.HORIZONTAL)
+        lbl_meetup = wx.StaticText(panel, label="Name des Treffens:")
+        w = lbl_meetup.GetTextExtent("Name des Treffens:")[0]
+        lbl_meetup.SetMinSize((max(w, 120) + 8, -1))
+        row_meetup.Add(lbl_meetup, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.meetup_name = wx.TextCtrl(panel, value="", size=(320, -1))
+        self.meetup_name.SetHint("z. B. PAN Wintertreffen 2026")
+        row_meetup.Add(self.meetup_name, 1, wx.EXPAND)
+        sizer.Add(row_meetup, 0, wx.EXPAND | wx.ALL, 6)
 
         # Excel row (label has MinSize so it isn't clipped on Windows)
         row1 = wx.BoxSizer(wx.HORIZONTAL)
@@ -173,7 +184,8 @@ class MainFrame(wx.Frame):
                         wx.OK | wx.ICON_INFORMATION,
                     )
                     return
-                render_html(participants, Path(html))
+                meetup_name = self.meetup_name.GetValue().strip()
+                render_html(participants, Path(html), meetup_name=meetup_name)
             msg = f"Die Kontaktliste wurde erstellt:\n{html}"
             if self.open_browser_cb.GetValue():
                 webbrowser.open(f"file://{Path(html).resolve()}")
