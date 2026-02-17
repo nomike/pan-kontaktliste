@@ -1,10 +1,12 @@
 """
 Read package version for display in GUI (About dialog).
 Release-please updates version in pyproject.toml; we read it from there or from metadata when installed.
+In a PyInstaller frozen exe, pyproject.toml is bundled so the fallback still works.
 """
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 
@@ -15,7 +17,9 @@ def get_version() -> str:
         return version("pan-kontaktliste")
     except Exception:
         pass
-    path = Path(__file__).resolve().parent / "pyproject.toml"
+    # In frozen (PyInstaller) exe, bundle root is sys._MEIPASS; pyproject.toml is added there at build
+    base = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    path = base / "pyproject.toml"
     if path.exists():
         text = path.read_text(encoding="utf-8")
         m = re.search(r'version\s*=\s*["\']([^"\']+)["\']', text)

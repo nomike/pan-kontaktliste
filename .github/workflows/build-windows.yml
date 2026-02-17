@@ -22,10 +22,12 @@ jobs:
           pip install pyinstaller
 
       - name: Build executable
+        shell: cmd
         run: |
           pyinstaller --onefile --windowed --name "PAN-Kontaktliste" ^
             --add-data "data/placeholder.png;data" ^
             --add-data "template;template" ^
+            --add-data "pyproject.toml;." ^
             gui.py
 
       - name: Create zip
