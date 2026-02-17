@@ -11,8 +11,9 @@ repos:
       - id: check-merge-conflict
       - id: debug-statements
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
-    hooks:
-      - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
+  # Optional: uncomment when ruff is installed (pip install ruff or OS package)
+  # - repo: https://github.com/astral-sh/ruff-pre-commit
+  #   rev: v0.8.4
+  #   hooks:
+  #     - id: ruff
+  #       args: [--fix, --exit-non-zero-on-fix]

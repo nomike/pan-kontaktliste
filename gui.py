@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """
 GUI for PAN Kontaktliste: select Excel file and HTML destination, then generate contact list.
-Uses ttk for native-looking widgets on Linux, Windows, and macOS.
+Uses wxPython for a native look on Windows, macOS, and Linux.
 """
 from __future__ import annotations
 
 import sys
 import tempfile
 import webbrowser
-import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox
-from tkinter import ttk
+
+import wx
 
 # Project modules
 from excel_reader import load_participants
@@ -23,61 +22,96 @@ def _resource_path(relative: str) -> Path:
     return Path(__file__).resolve().parent / relative
 
 
-def run_gui() -> None:
-    root = tk.Tk()
-    root.title("PAN Kontaktliste")
+class MainFrame(wx.Frame):
+    def __init__(self) -> None:
+        super().__init__(None, title="PAN Kontaktliste", size=(580, 260))
+        self.SetMinSize((520, 240))
 
-    # Ensure window is large enough for all controls; use minsize so it can't be shrunk too small
-    root.minsize(520, 240)
-    root.geometry("580x260")
-    root.resizable(True, True)
+        panel = wx.Panel(self)
+        sizer = wx.BoxSizer(wx.VERTICAL)
 
-    # Use a frame with padding so content isn't flush against the edges
-    main = ttk.Frame(root, padding=12)
-    main.pack(fill=tk.BOTH, expand=True)
+        # Excel row
+        row1 = wx.BoxSizer(wx.HORIZONTAL)
+        row1.Add(wx.StaticText(panel, label="Excel-Datei:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.xlsx_path = wx.TextCtrl(panel, value="", size=(320, -1))
+        row1.Add(self.xlsx_path, 1, wx.EXPAND | wx.RIGHT, 6)
+        btn_xlsx = wx.Button(panel, label="Durchsuchen ...")
+        btn_xlsx.Bind(wx.EVT_BUTTON, self._on_choose_xlsx)
+        row1.Add(btn_xlsx, 0)
+        sizer.Add(row1, 0, wx.EXPAND | wx.ALL, 6)
 
-    xlsx_path_var: tk.StringVar = tk.StringVar(value="")
-    html_path_var: tk.StringVar = tk.StringVar(value="")
-    open_browser_var: tk.BooleanVar = tk.BooleanVar(value=True)
+        # HTML row
+        row2 = wx.BoxSizer(wx.HORIZONTAL)
+        row2.Add(wx.StaticText(panel, label="HTML-Datei speichern unter:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.html_path = wx.TextCtrl(panel, value="", size=(320, -1))
+        row2.Add(self.html_path, 1, wx.EXPAND | wx.RIGHT, 6)
+        btn_html = wx.Button(panel, label="Durchsuchen ...")
+        btn_html.Bind(wx.EVT_BUTTON, self._on_choose_html)
+        row2.Add(btn_html, 0)
+        sizer.Add(row2, 0, wx.EXPAND | wx.ALL, 6)
 
-    def choose_xlsx() -> None:
-        path = filedialog.askopenfilename(
-            title="Excel-Datei wählen",
-            filetypes=[
-                ("Excel-Dateien", "*.xlsx"),
-                ("Alle Dateien", "*.*"),
-            ],
+        # Checkbox
+        self.open_browser_cb = wx.CheckBox(
+            panel, label="HTML nach dem Erstellen im Browser öffnen"
         )
-        if path:
-            xlsx_path_var.set(path)
+        self.open_browser_cb.SetValue(True)
+        sizer.Add(self.open_browser_cb, 0, wx.LEFT | wx.TOP, 8)
 
-    def choose_html() -> None:
-        path = filedialog.asksaveasfilename(
-            title="HTML-Datei speichern unter",
-            defaultextension=".html",
-            filetypes=[
-                ("HTML-Dateien", "*.html"),
-                ("Alle Dateien", "*.*"),
-            ],
-        )
-        if path:
-            html_path_var.set(path)
+        # Create button
+        create_btn = wx.Button(panel, label="Kontaktliste erstellen")
+        create_btn.Bind(wx.EVT_BUTTON, self._on_create_list)
+        sizer.Add(create_btn, 0, wx.ALL, 16)
 
-    def create_list() -> None:
-        xlsx = xlsx_path_var.get().strip()
-        html = html_path_var.get().strip()
+        panel.SetSizer(sizer)
+
+    def _on_choose_xlsx(self, _event: wx.CommandEvent) -> None:
+        with wx.FileDialog(
+            self,
+            "Excel-Datei wählen",
+            wildcard="Excel-Dateien (*.xlsx)|*.xlsx|Alle Dateien (*.*)|*.*",
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+        ) as dlg:
+            if dlg.ShowModal() == wx.ID_OK:
+                self.xlsx_path.SetValue(dlg.GetPath())
+
+    def _on_choose_html(self, _event: wx.CommandEvent) -> None:
+        with wx.FileDialog(
+            self,
+            "HTML-Datei speichern unter",
+            defaultFile="",
+            wildcard="HTML-Dateien (*.html)|*.html|Alle Dateien (*.*)|*.*",
+            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+        ) as dlg:
+            if dlg.ShowModal() == wx.ID_OK:
+                path = dlg.GetPath()
+                if not path.endswith(".html"):
+                    path += ".html"
+                self.html_path.SetValue(path)
+
+    def _on_create_list(self, _event: wx.CommandEvent) -> None:
+        xlsx = self.xlsx_path.GetValue().strip()
+        html = self.html_path.GetValue().strip()
         if not xlsx:
-            messagebox.showwarning("Eingabe fehlt", "Bitte wählen Sie eine Excel-Datei.")
+            wx.MessageBox(
+                "Bitte wählen Sie eine Excel-Datei.",
+                "Eingabe fehlt",
+                wx.OK | wx.ICON_WARNING,
+            )
             return
         if not html:
-            messagebox.showwarning("Eingabe fehlt", "Bitte wählen Sie einen Speicherort für die HTML-Datei.")
+            wx.MessageBox(
+                "Bitte wählen Sie einen Speicherort für die HTML-Datei.",
+                "Eingabe fehlt",
+                wx.OK | wx.ICON_WARNING,
+            )
             return
 
         placeholder = _resource_path("data/placeholder.png")
         if not placeholder.exists():
-            messagebox.showerror(
-                "Fehler",
+            wx.MessageBox(
                 f"Platzhalterbild fehlt: {placeholder}\nBitte legen Sie data/placeholder.png ab.",
+                "Fehler",
+                wx.OK | wx.ICON_ERROR,
             )
             return
 
@@ -86,46 +120,29 @@ def run_gui() -> None:
                 build_path = Path(build_dir)
                 participants = load_participants(xlsx, placeholder, image_output_dir=build_path)
                 if not participants:
-                    messagebox.showinfo(
-                        "Keine Teilnehmer",
+                    wx.MessageBox(
                         "In der Excel-Datei sind keine Einträge mit aktivierter Teilnehmyliste.",
+                        "Keine Teilnehmer",
+                        wx.OK | wx.ICON_INFORMATION,
                     )
                     return
                 render_html(participants, Path(html))
             msg = f"Die Kontaktliste wurde erstellt:\n{html}"
-            if open_browser_var.get():
+            if self.open_browser_cb.GetValue():
                 webbrowser.open(f"file://{Path(html).resolve()}")
                 msg += "\n\nDie Liste wurde im Browser geöffnet. Zum Erzeugen einer PDF: Drucken → Als PDF speichern."
-            messagebox.showinfo("Fertig", msg)
+            wx.MessageBox(msg, "Fertig", wx.OK | wx.ICON_INFORMATION)
         except FileNotFoundError as e:
-            messagebox.showerror("Datei fehlt", str(e))
+            wx.MessageBox(str(e), "Datei fehlt", wx.OK | wx.ICON_ERROR)
         except Exception as e:
-            messagebox.showerror("Fehler", str(e))
+            wx.MessageBox(str(e), "Fehler", wx.OK | wx.ICON_ERROR)
 
-    row = 0
-    ttk.Label(main, text="Excel-Datei:").grid(row=row, column=0, sticky=tk.W, pady=6)
-    ttk.Entry(main, textvariable=xlsx_path_var, width=50).grid(row=row, column=1, padx=6, pady=6, sticky=tk.EW)
-    ttk.Button(main, text="Durchsuchen ...", command=choose_xlsx).grid(row=row, column=2, pady=6)
-    row += 1
 
-    ttk.Label(main, text="HTML-Datei speichern unter:").grid(row=row, column=0, sticky=tk.W, pady=6)
-    ttk.Entry(main, textvariable=html_path_var, width=50).grid(row=row, column=1, padx=6, pady=6, sticky=tk.EW)
-    ttk.Button(main, text="Durchsuchen ...", command=choose_html).grid(row=row, column=2, pady=6)
-    row += 1
-
-    ttk.Checkbutton(
-        main,
-        text="HTML nach dem Erstellen im Browser öffnen",
-        variable=open_browser_var,
-    ).grid(row=row, column=1, sticky=tk.W, pady=8)
-    row += 1
-
-    create_btn = ttk.Button(main, text="Kontaktliste erstellen", command=create_list)
-    create_btn.grid(row=row, column=1, pady=16)
-
-    main.columnconfigure(1, weight=1)
-
-    root.mainloop()
+def run_gui() -> None:
+    app = wx.App()
+    frame = MainFrame()
+    frame.Show()
+    app.MainLoop()
 
 
 if __name__ == "__main__":

@@ -50,7 +50,7 @@ Zum Erzeugen einer PDF: HTML im Browser öffnen → Menü Drucken (oder Strg+P) 
 
 ## Projektstruktur
 
-- `gui.py` – Einstieg für die grafische Oberfläche (Dateiauswahl, Aufruf von Excel-Leser und HTML-Erstellung)
+- `gui.py` – Einstieg für die grafische Oberfläche (wxPython; Dateiauswahl, Aufruf von Excel-Leser und HTML-Erstellung)
 - `excel_reader.py` – Einlesen der Excel-Datei, Filterung nach Einwilligungen, Extraktion von Bildern
 - `render.py` – Jinja2-Rendering der HTML-Vorlage (Bilder als Data-URLs)
 - `template/contact_list.html.j2` – HTML-Vorlage (Jinja2) für die Kontaktliste

@@ -6,3 +6,6 @@ Jinja2>=3.1.0
 
 # Image extraction from Excel (required by openpyxl for reading embedded images)
 Pillow>=10.0.0
+
+# GUI (native look on Windows, macOS, Linux)
+wxPython>=4.2.0

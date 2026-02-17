@@ -1,4 +1,4 @@
 # Development and code quality (install with: pip install -r requirements-dev.txt)
 -r requirements.txt
 pre-commit>=4.0.0
-ruff>=0.8.0
+# Optional: pip install ruff  (if your Python/platform has wheels; otherwise skip or use OS package)
