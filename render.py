@@ -38,12 +38,14 @@ def _image_to_data_url(image_path: str | Path) -> str:
 def render_html(
     participants: list[dict],
     output_html_path: Path,
+    meetup_name: str = "",
     template_dir: Path | None = None,
 ) -> None:
     """
     Render participants to a single HTML file with embedded images (data URLs).
     Each participant must have 'image_path' (path to image file).
     Adds 'image_data' (data URL) to each participant for the template.
+    meetup_name is used as the HTML page title and h1; if empty, falls back to "Teilnehmerkontaktliste".
     """
     output_html_path = Path(output_html_path)
     if template_dir is None:
@@ -58,5 +60,8 @@ def render_html(
         p["image_data"] = _image_to_data_url(p["image_path"])
 
     template = env.get_template("contact_list.html.j2")
-    html_content = template.render(participants=participants)
+    html_content = template.render(
+        participants=participants,
+        meetup_name=meetup_name.strip(),
+    )
     output_html_path.write_text(html_content, encoding="utf-8")
