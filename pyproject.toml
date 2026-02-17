@@ -1,6 +1,6 @@
 [project]
 name = "pan-kontaktliste"
-version = "0.2.1"
+version = "0.3.0"
 description = "PDF contact list from PAN meetup Excel sign-up data"
 readme = "README.md"
 requires-python = ">=3.10"
