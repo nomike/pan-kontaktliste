@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.3.0](https://github.com/nomike/pan-kontaktliste/compare/v0.2.1...v0.3.0) (2026-02-17)
+
+
+### Features
+
+* add meetup name field for HTML title and heading ([#9](https://github.com/nomike/pan-kontaktliste/issues/9)) ([5fe68ff](https://github.com/nomike/pan-kontaktliste/commit/5fe68ffc83ff87d4ec97b768605e2dadf0b776b7))
+
 ## [0.2.1](https://github.com/nomike/pan-kontaktliste/compare/v0.2.0...v0.2.1) (2026-02-17)
 
 
