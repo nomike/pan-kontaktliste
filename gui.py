@@ -11,15 +11,21 @@ import webbrowser
 from pathlib import Path
 
 import wx
+import wx.adv
 
 # Project modules
 from excel_reader import load_participants
 from render import render_html
+from version import get_version
 
 
 def _resource_path(relative: str) -> Path:
-    """Path to a file in the project (e.g. data/placeholder.png)."""
-    return Path(__file__).resolve().parent / relative
+    """Path to a file in the project (e.g. data/placeholder.png). Supports PyInstaller frozen exe."""
+    if getattr(sys, "frozen", False):
+        base = Path(sys._MEIPASS)
+    else:
+        base = Path(__file__).resolve().parent
+    return base / relative
 
 
 class MainFrame(wx.Frame):
@@ -62,7 +68,30 @@ class MainFrame(wx.Frame):
         create_btn.Bind(wx.EVT_BUTTON, self._on_create_list)
         sizer.Add(create_btn, 0, wx.ALL, 16)
 
+        # Menu: Help → About
+        menubar = wx.MenuBar()
+        help_menu = wx.Menu()
+        about_item = help_menu.Append(wx.ID_ABOUT, "Über PAN Kontaktliste...")
+        self.Bind(wx.EVT_MENU, self._on_about, about_item)
+        menubar.Append(help_menu, "Hilfe")
+        self.SetMenuBar(menubar)
+
         panel.SetSizer(sizer)
+
+    def _on_about(self, _event: wx.CommandEvent) -> None:
+        info = wx.adv.AboutDialogInfo()
+        info.SetName("PAN Kontaktliste")
+        info.SetVersion(get_version())
+        info.SetDescription(
+            "Erstellt aus einer Excel-Anmeldeliste eine HTML-Kontaktliste für Teilnehmerinnen und Teilnehmer "
+            "(einwilligungsbasiert). Lizenz: GPL-3.0-or-later."
+        )
+        info.SetLicense(
+            "Dieses Programm steht unter der GNU General Public License v3.0 (GPLv3).\n"
+            "Vollständiger Lizenztext: siehe LICENSE im Projekt oder https://www.gnu.org/licenses/gpl-3.0.html"
+        )
+        info.SetWebSite("https://github.com/nomike/pan-kontaktliste")
+        wx.adv.AboutBox(info)
 
     def _on_choose_xlsx(self, _event: wx.CommandEvent) -> None:
         with wx.FileDialog(

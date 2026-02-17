@@ -48,6 +48,19 @@ Zum Erzeugen einer PDF: HTML im Browser öffnen → Menü Drucken (oder Strg+P) 
 4. Ist keine Einwilligung für ein Bild vorhanden oder kein Bild hinterlegt, wird das Platzhalterbild aus `data/placeholder.png` verwendet.
 5. Die Liste wird als eine einzige HTML-Datei mit eingebetteten Bildern (Data-URLs) erzeugt – die Datei kann ohne weitere Ressourcen weitergegeben werden.
 
+## Versionierung und Releases
+
+Die Version wird mit [Release Please](https://github.com/googleapis/release-please) verwaltet (Conventional Commits auf `main`). Beim Veröffentlichen eines Releases erstellt eine GitHub Action automatisch **Windows-Builds** (`.exe` und `.zip`) und hängt sie dem Release an.
+
+- **Hilfe → Über PAN Kontaktliste** im Programm zeigt Version, Lizenz und Link zum [GitHub-Projekt](https://github.com/nomike/pan-kontaktliste).
+
+## Entwicklung und Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
 ## Projektstruktur
 
 - `gui.py` – Einstieg für die grafische Oberfläche (wxPython; Dateiauswahl, Aufruf von Excel-Leser und HTML-Erstellung)
@@ -55,7 +68,9 @@ Zum Erzeugen einer PDF: HTML im Browser öffnen → Menü Drucken (oder Strg+P) 
 - `render.py` – Jinja2-Rendering der HTML-Vorlage (Bilder als Data-URLs)
 - `template/contact_list.html.j2` – HTML-Vorlage (Jinja2) für die Kontaktliste
 - `data/placeholder.png` – Platzhalterbild, wenn kein Bild oder keine Einwilligung
+- `version.py` – Versionsanzeige (liest aus pyproject.toml)
 - `requirements.txt` – Python-Abhängigkeiten
+- `tests/` – Unit-Tests (pytest)
 
 ## Lizenz
 

@@ -4,9 +4,17 @@ Render participant list to HTML (with optional print-to-PDF via browser).
 from __future__ import annotations
 
 import base64
+import sys
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+
+def _base_path() -> Path:
+    """Project root (or PyInstaller bundle root)."""
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent
 
 
 def _image_to_data_url(image_path: str | Path) -> str:
@@ -39,11 +47,11 @@ def render_html(
     """
     output_html_path = Path(output_html_path)
     if template_dir is None:
-        template_dir = Path(__file__).resolve().parent / "template"
+        template_dir = _base_path() / "template"
 
     env = Environment(
         loader=FileSystemLoader(str(template_dir)),
-        autoescape=select_autoescape(["html", "htm", "xml"]),
+        autoescape=select_autoescape(["html", "htm", "xml", "j2"]),
     )
 
     for p in participants:
