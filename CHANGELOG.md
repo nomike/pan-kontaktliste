@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.2.1](https://github.com/nomike/pan-kontaktliste/compare/v0.2.0...v0.2.1) (2026-02-17)
+
+
+### Bug Fixes
+
+* **gui:** correct label and layout on Windows ([#5](https://github.com/nomike/pan-kontaktliste/issues/5)) ([b2539e3](https://github.com/nomike/pan-kontaktliste/commit/b2539e3de38c314d65d77f2c34658cced92062a1))
+
 ## [0.2.0](https://github.com/nomike/pan-kontaktliste/compare/v0.1.0...v0.2.0) (2026-02-17)
 
 
