@@ -34,20 +34,19 @@
       padding: 0.5rem 0.6rem;
       break-inside: avoid;
       page-break-inside: avoid;
-      display: flex;
-      gap: 0.5rem;
-      align-items: flex-start;
+      overflow: auto;
     }
     .card-photo {
-      flex-shrink: 0;
+      float: left;
       width: 72px;
       height: 72px;
       object-fit: cover;
       border-radius: 4px;
+      margin-right: 0.5rem;
+      margin-bottom: 0.25rem;
     }
     .card-body {
       min-width: 0;
-      flex: 1;
     }
     .card-body p {
       margin: 0.15rem 0;
@@ -66,13 +65,11 @@
     <div class="card">
       <img class="card-photo" src="{{ p.image_data }}" alt="" width="72" height="72">
       <div class="card-body">
-        <p><span class="label">Land:</span> {{ p.land }}</p>
-        <p><span class="label">Rufname/Pseudonym:</span> {{ p.rufname }}</p>
+        <p><span class="label">Name:</span> {{ p.vorname }}{% if p.vorname and (p.nachname or p.rufname) %} {% endif %}{{ p.nachname }}{% if p.nachname and p.rufname %} {% endif %}{% if p.rufname %}{% if p.vorname or p.nachname %}({{ p.rufname }}){% else %}{{ p.rufname }}{% endif %}{% endif %}</p>
+        <p><span class="label">Ort:</span> {{ p.land }}{% if p.plz %}, {{ p.plz }}{% endif %}{% if p.ort %} {{ p.ort }}{% endif %}</p>
         <p><span class="label">Couch:</span> {{ p.couch }}</p>
         {% if p.email is defined and p.email %}<p><span class="label">E-Mail:</span> {{ p.email }}</p>{% endif %}
         {% if p.phone is defined and p.phone %}<p><span class="label">Telefon:</span> {{ p.phone }}</p>{% endif %}
-        {% if p.nachname is defined and p.nachname %}<p><span class="label">Nachname:</span> {{ p.nachname }}</p>{% endif %}
-        {% if p.vorname is defined and p.vorname %}<p><span class="label">Vorname:</span> {{ p.vorname }}</p>{% endif %}
       </div>
     </div>
     {% endfor %}
