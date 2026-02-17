@@ -24,6 +24,8 @@ CONSENT_VORNAME = "Teilnehmerliste Vorname"  # note: "Teilnehmerliste" spelling
 CONSENT_BILD = "Teilnehmyliste Bild"
 
 DATA_LAND = "Land"
+DATA_PLZ = "PLZ"
+DATA_ORT = "Ort"
 DATA_RUFNAME = "Rufname/Pseudonym"
 DATA_COUCH = "Teilnehmyliste_Couch"
 DATA_EMAIL = "E-Mail Adresse"
@@ -118,8 +120,8 @@ def load_participants(
     """
     Load workbook, filter by Teilnehmyliste, apply per-field consent, resolve image or placeholder.
     If image_output_dir is given, extracted/placeholder images are copied there (for LaTeX build).
-    Returns list of participant dicts with keys: land, rufname, couch, email?, phone?, nachname?,
-    vorname?, image_path (always set).
+    Returns list of participant dicts with keys: land, plz, ort, rufname, couch, email?, phone?,
+    nachname?, vorname?, image_path (always set).
     """
     xlsx_path = Path(xlsx_path)
     placeholder_image_path = Path(placeholder_image_path)
@@ -177,6 +179,8 @@ def load_participants(
         bild_ok = _truthy(cell(row_idx, CONSENT_BILD))
 
         land = _str(cell(row_idx, DATA_LAND))
+        plz = _str(cell(row_idx, DATA_PLZ))
+        ort = _str(cell(row_idx, DATA_ORT))
         rufname = _str(cell(row_idx, DATA_RUFNAME))
         couch = _str(cell(row_idx, DATA_COUCH))
 
@@ -203,6 +207,8 @@ def load_participants(
 
         p: dict[str, Any] = {
             "land": land,
+            "plz": plz,
+            "ort": ort,
             "rufname": rufname,
             "couch": couch,
             "image_path": image_path,
