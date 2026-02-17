@@ -18,18 +18,12 @@ jobs:
           sudo apt-get install -y \
             python3 \
             python3-pip \
-            python3-venv \
-            python3-dev \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-0 \
-            libnotify-dev \
-            libgstreamer-plugins-base1.0-dev
+            python3-dev
 
-      - name: Create venv and install Python dependencies
+      - name: Install Python dependencies (no wxPython; tests do not need GUI)
         run: |
-          python3 -m venv .venv
-          .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+          python3 -m pip install --upgrade pip --break-system-packages
+          python3 -m pip install openpyxl Jinja2 Pillow pytest --break-system-packages
 
       - name: Run tests
-        run: .venv/bin/python -m pytest tests/ -v
+        run: python3 -m pytest tests/ -v
