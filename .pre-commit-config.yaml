@@ -11,6 +11,13 @@ repos:
       - id: check-merge-conflict
       - id: debug-statements
 
+  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
+    rev: v9.18.0
+    hooks:
+      - id: commitlint
+        stages: [commit-msg]
+        additional_dependencies: ["@commitlint/config-conventional@19"]
+
   # Optional: uncomment when ruff is installed (pip install ruff or OS package)
   # - repo: https://github.com/astral-sh/ruff-pre-commit
   #   rev: v0.8.4
