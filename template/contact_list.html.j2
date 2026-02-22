@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% if meetup_name %}{{ meetup_name }}{% else %}Teilnehmerkontaktliste{% endif %}</title>
+  <title>{% if meetup_name %}{{ meetup_name }}{% else %}Teilnehmendenkontaktliste{% endif %}</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -59,7 +59,7 @@
   </style>
 </head>
 <body>
-  <h1>{% if meetup_name %}{{ meetup_name }}{% else %}Teilnehmerkontaktliste{% endif %}</h1>
+  <h1>{% if meetup_name %}{{ meetup_name }}{% else %}Teilnehmendenkontaktliste{% endif %}</h1>
   <div class="columns">
     {% for p in participants %}
     <div class="card">
