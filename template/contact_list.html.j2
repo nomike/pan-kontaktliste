@@ -68,8 +68,8 @@
         <p><span class="label">Name:</span> {{ [p.vorname if (p.vorname is defined and p.vorname) else none, p.rufname if p.rufname else none, p.nachname if (p.nachname is defined and p.nachname) else none] | select | join(' ') }}</p>
         <p><span class="label">Ort:</span> {{ p.land }}{% if p.plz %}, {{ p.plz }}{% endif %}{% if p.ort %} {{ p.ort }}{% endif %}</p>
         {% if p.couch %}<p><span class="label">Couch:</span> {{ p.couch }}</p>{% endif %}
-        {% if p.email is defined and p.email %}<p><span class="label">E-Mail:</span> {{ p.email }}</p>{% endif %}
-        {% if p.phone is defined and p.phone %}<p><span class="label">Telefon:</span> {{ p.phone }}</p>{% endif %}
+        {% if p.email is defined and p.email %}<p><span class="label">E-Mail:</span> <a href="mailto:{{ p.email }}">{{ p.email }}</a></p>{% endif %}
+        {% if p.phone is defined and p.phone %}<p><span class="label">Telefon:</span> <a href="tel:{{ p.phone }}">{{ p.phone }}</a></p>{% endif %}
       </div>
     </div>
     {% endfor %}
