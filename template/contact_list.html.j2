@@ -29,21 +29,21 @@
       .columns { gap: 0.5rem 1rem; }
     }
     .card {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
       border: 1px solid rgba(0,0,0,0.25);
       border-radius: 6px;
       padding: 0.5rem 0.6rem;
       break-inside: avoid;
       page-break-inside: avoid;
-      overflow: auto;
     }
     .card-photo {
-      float: left;
+      flex-shrink: 0;
       width: 72px;
       height: 72px;
       object-fit: cover;
       border-radius: 4px;
-      margin-right: 0.5rem;
-      margin-bottom: 0.25rem;
     }
     .card-body {
       min-width: 0;
@@ -65,11 +65,11 @@
     <div class="card">
       <img class="card-photo" src="{{ p.image_data }}" alt="" width="72" height="72">
       <div class="card-body">
-        <p><span class="label">Name:</span> {{ p.vorname }}{% if p.vorname and (p.nachname or p.rufname) %} {% endif %}{{ p.nachname }}{% if p.nachname and p.rufname %} {% endif %}{% if p.rufname %}{% if p.vorname or p.nachname %}({{ p.rufname }}){% else %}{{ p.rufname }}{% endif %}{% endif %}</p>
+        <p><span class="label">Name:</span> {{ [p.vorname if (p.vorname is defined and p.vorname) else none, p.rufname if p.rufname else none, p.nachname if (p.nachname is defined and p.nachname) else none] | select | join(' ') }}</p>
         <p><span class="label">Ort:</span> {{ p.land }}{% if p.plz %}, {{ p.plz }}{% endif %}{% if p.ort %} {{ p.ort }}{% endif %}</p>
-        <p><span class="label">Couch:</span> {{ p.couch }}</p>
-        {% if p.email is defined and p.email %}<p><span class="label">E-Mail:</span> {{ p.email }}</p>{% endif %}
-        {% if p.phone is defined and p.phone %}<p><span class="label">Telefon:</span> {{ p.phone }}</p>{% endif %}
+        {% if p.couch %}<p><span class="label">Couch:</span> {{ p.couch }}</p>{% endif %}
+        {% if p.email is defined and p.email %}<p><span class="label">E-Mail:</span> <a href="mailto:{{ p.email }}">{{ p.email }}</a></p>{% endif %}
+        {% if p.phone is defined and p.phone %}<p><span class="label">Telefon:</span> <a href="tel:{{ p.phone }}">{{ p.phone }}</a></p>{% endif %}
       </div>
     </div>
     {% endfor %}

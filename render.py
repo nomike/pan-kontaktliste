@@ -4,10 +4,14 @@ Render participant list to HTML (with optional print-to-PDF via browser).
 from __future__ import annotations
 
 import base64
+import io
 import sys
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from PIL import Image
+
+_THUMBNAIL_SIZE = (144, 144)  # 2x display size (72px CSS) for retina
 
 
 def _base_path() -> Path:
@@ -18,21 +22,19 @@ def _base_path() -> Path:
 
 
 def _image_to_data_url(image_path: str | Path) -> str:
-    """Read image file and return a data URL (e.g. data:image/png;base64,...)."""
+    """Resize image to thumbnail and return a PNG data URL."""
     path = Path(image_path)
     if not path.exists():
         return ""
-    data = path.read_bytes()
-    ext = path.suffix.lower()
-    mime = {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".webp": "image/webp",
-    }.get(ext, "image/png")
-    b64 = base64.b64encode(data).decode("ascii")
-    return f"data:{mime};base64,{b64}"
+    try:
+        with Image.open(path) as img:
+            img.thumbnail(_THUMBNAIL_SIZE, Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG", optimize=True)
+            b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+            return f"data:image/png;base64,{b64}"
+    except Exception:
+        return ""
 
 
 def render_html(
