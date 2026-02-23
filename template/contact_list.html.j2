@@ -65,7 +65,7 @@
     <div class="card">
       <img class="card-photo" src="{{ p.image_data }}" alt="" width="72" height="72">
       <div class="card-body">
-        <p><span class="label">Name:</span> {{ p.vorname }}{% if p.vorname and (p.nachname or p.rufname) %} {% endif %}{{ p.nachname }}{% if p.nachname and p.rufname %} {% endif %}{% if p.rufname %}{% if p.vorname or p.nachname %}({{ p.rufname }}){% else %}{{ p.rufname }}{% endif %}{% endif %}</p>
+        <p><span class="label">Name:</span> {{ [p.vorname if (p.vorname is defined and p.vorname) else none, p.rufname if p.rufname else none, p.nachname if (p.nachname is defined and p.nachname) else none] | select | join(' ') }}</p>
         <p><span class="label">Ort:</span> {{ p.land }}{% if p.plz %}, {{ p.plz }}{% endif %}{% if p.ort %} {{ p.ort }}{% endif %}</p>
         <p><span class="label">Couch:</span> {{ p.couch }}</p>
         {% if p.email is defined and p.email %}<p><span class="label">E-Mail:</span> {{ p.email }}</p>{% endif %}
