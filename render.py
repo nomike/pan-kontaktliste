@@ -45,7 +45,7 @@ def render_html(
     Render participants to a single HTML file with embedded images (data URLs).
     Each participant must have 'image_path' (path to image file).
     Adds 'image_data' (data URL) to each participant for the template.
-    meetup_name is used as the HTML page title and h1; if empty, falls back to "Teilnehmerkontaktliste".
+    meetup_name is used as the HTML page title and h1; if empty, falls back to "Teilnehmendenkontaktliste".
     """
     output_html_path = Path(output_html_path)
     if template_dir is None:
