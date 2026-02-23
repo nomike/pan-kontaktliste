@@ -29,21 +29,21 @@
       .columns { gap: 0.5rem 1rem; }
     }
     .card {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
       border: 1px solid rgba(0,0,0,0.25);
       border-radius: 6px;
       padding: 0.5rem 0.6rem;
       break-inside: avoid;
       page-break-inside: avoid;
-      overflow: auto;
     }
     .card-photo {
-      float: left;
+      flex-shrink: 0;
       width: 72px;
       height: 72px;
       object-fit: cover;
       border-radius: 4px;
-      margin-right: 0.5rem;
-      margin-bottom: 0.25rem;
     }
     .card-body {
       min-width: 0;
