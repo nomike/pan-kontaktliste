@@ -13,6 +13,13 @@ from pathlib import Path
 import wx
 import wx.adv
 
+try:
+    import wx.svg
+
+    _HAS_SVG = True
+except ImportError:
+    _HAS_SVG = False
+
 # Project modules
 from excel_reader import load_participants
 from render import render_html
@@ -32,6 +39,8 @@ class MainFrame(wx.Frame):
     def __init__(self) -> None:
         super().__init__(None, title="PAN Kontaktliste", size=(580, 300))
         self.SetMinSize((520, 280))
+        self._app_icon = None
+        self._set_icon()
 
         self._panel = wx.Panel(self)
         panel = self._panel
@@ -98,6 +107,27 @@ class MainFrame(wx.Frame):
         panel.Layout()
         self.Bind(wx.EVT_SHOW, self._on_show)
 
+    def _set_icon(self) -> None:
+        if not _HAS_SVG:
+            return
+        icon_path = _resource_path("data/polyamory-logo.svg")
+        if not icon_path.exists():
+            return
+        try:
+            svg_img = wx.svg.SVGimage.CreateFromFile(str(icon_path))
+            icon_bundle = wx.IconBundle()
+            for size in (16, 32, 48, 64, 128, 256):
+                bmp = svg_img.ConvertToScaledBitmap(wx.Size(size, size))
+                icon = wx.Icon()
+                icon.CopyFromBitmap(bmp)
+                icon_bundle.AddIcon(icon)
+            self.SetIcons(icon_bundle)
+            bmp = svg_img.ConvertToScaledBitmap(wx.Size(64, 64))
+            self._app_icon = wx.Icon()
+            self._app_icon.CopyFromBitmap(bmp)
+        except Exception:
+            pass
+
     def _on_show(self, event: wx.ShowEvent) -> None:
         """Force layout on first show so the window displays correctly on Windows."""
         if event.IsShown():
@@ -109,6 +139,8 @@ class MainFrame(wx.Frame):
 
     def _on_about(self, _event: wx.CommandEvent) -> None:
         info = wx.adv.AboutDialogInfo()
+        if self._app_icon:
+            info.SetIcon(self._app_icon)
         info.SetName("PAN Kontaktliste")
         info.SetVersion(get_version())
         info.SetDescription(

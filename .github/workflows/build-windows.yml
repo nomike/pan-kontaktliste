@@ -29,6 +29,7 @@ jobs:
         run: |
           pyinstaller --onefile --windowed --name "PAN-Kontaktliste" ^
             --add-data "data/placeholder.png;data" ^
+            --add-data "data/polyamory-logo.svg;data" ^
             --add-data "template;template" ^
             --add-data "pyproject.toml;." ^
             gui.py

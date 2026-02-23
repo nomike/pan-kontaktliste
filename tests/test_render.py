@@ -14,7 +14,7 @@ def test_render_html_empty_participants(tmp_path: Path, placeholder_path: Path) 
     render_html([], out)
     assert out.exists()
     content = out.read_text(encoding="utf-8")
-    assert "Teilnehmerkontaktliste" in content
+    assert "Teilnehmendenkontaktliste" in content
     assert "columns" in content
 
 
