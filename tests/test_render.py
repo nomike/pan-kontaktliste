@@ -1,11 +1,14 @@
 """Tests for render: HTML output, image data URLs, edge cases."""
 from __future__ import annotations
 
+import base64
+import io
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
-from render import render_html
+from render import _image_to_data_url, render_html
 
 
 def test_render_html_empty_participants(tmp_path: Path, placeholder_path: Path) -> None:
@@ -92,3 +95,35 @@ def test_render_html_escapes_content(tmp_path: Path, placeholder_path: Path) -> 
     content = out.read_text(encoding="utf-8")
     assert "&lt;script&gt;" in content or "<script>" not in content
     assert "&amp;" in content
+
+
+def test_image_to_data_url_rotation(tmp_path: Path) -> None:
+    """Rotation swaps width and height before thumbnailing."""
+    src = tmp_path / "wide.png"
+    Image.new("RGB", (200, 100), color=(255, 0, 0)).save(src)
+
+    data_url = _image_to_data_url(src, rotation=90)
+    assert data_url.startswith("data:image/png;base64,")
+    raw = base64.b64decode(data_url.split(",", 1)[1])
+    with Image.open(io.BytesIO(raw)) as thumb:
+        assert thumb.width < thumb.height
+
+
+def test_render_html_applies_image_rotation(tmp_path: Path) -> None:
+    """render_html passes image_rotation through to thumbnail generation."""
+    src = tmp_path / "wide.png"
+    Image.new("RGB", (200, 100), color=(0, 255, 0)).save(src)
+    participants = [
+        {
+            "land": "DE",
+            "rufname": "Rotated",
+            "couch": "",
+            "image_path": str(src),
+            "image_rotation": 90,
+        },
+    ]
+    out = tmp_path / "out.html"
+    render_html(participants, out)
+    content = out.read_text(encoding="utf-8")
+    assert "Rotated" in content
+    assert "data:image/png;base64," in content

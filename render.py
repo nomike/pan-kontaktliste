@@ -21,13 +21,15 @@ def _base_path() -> Path:
     return Path(__file__).resolve().parent
 
 
-def _image_to_data_url(image_path: str | Path) -> str:
+def _image_to_data_url(image_path: str | Path, rotation: int = 0) -> str:
     """Resize image to thumbnail and return a PNG data URL."""
     path = Path(image_path)
     if not path.exists():
         return ""
     try:
         with Image.open(path) as img:
+            if rotation % 360:
+                img = img.rotate(rotation, expand=True)
             img.thumbnail(_THUMBNAIL_SIZE, Image.LANCZOS)
             buf = io.BytesIO()
             img.save(buf, format="PNG", optimize=True)
@@ -59,7 +61,10 @@ def render_html(
     )
 
     for p in participants:
-        p["image_data"] = _image_to_data_url(p["image_path"])
+        p["image_data"] = _image_to_data_url(
+            p["image_path"],
+            p.get("image_rotation", 0),
+        )
 
     template = env.get_template("contact_list.html.j2")
     html_content = template.render(
