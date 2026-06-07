@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.4.0](https://github.com/nomike/pan-kontaktliste/compare/v0.3.2...v0.4.0) (2026-06-07)
+
+
+### Features
+
+* per-row image rotation and contact list display fixes ([#15](https://github.com/nomike/pan-kontaktliste/issues/15)) ([0c4ad54](https://github.com/nomike/pan-kontaktliste/commit/0c4ad5433b76bf0157cc864698402402fddc59c7))
+
 ## [0.3.2](https://github.com/nomike/pan-kontaktliste/compare/v0.3.1...v0.3.2) (2026-02-23)
 
 
