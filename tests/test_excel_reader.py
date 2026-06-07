@@ -143,3 +143,41 @@ def test_load_participants_multiple(tmp_path: Path, placeholder_path: Path) -> N
     assert len(result) == 2
     assert result[0]["rufname"] == "A"
     assert result[1]["rufname"] == "C"
+
+
+def test_load_participants_image_rotation(tmp_path: Path, placeholder_path: Path) -> None:
+    """Bild Drehung column is parsed into image_rotation (degrees, mod 360)."""
+    xlsx = build_sample_xlsx(tmp_path, [
+        {
+            "Teilnehmyliste": True,
+            "Land": "DE",
+            "Rufname/Pseudonym": "NoRot",
+            "Teilnehmyliste_Couch": "",
+            "Bild Drehung": "",
+        },
+        {
+            "Teilnehmyliste": True,
+            "Land": "DE",
+            "Rufname/Pseudonym": "Rot90",
+            "Teilnehmyliste_Couch": "",
+            "Bild Drehung": 90,
+        },
+        {
+            "Teilnehmyliste": True,
+            "Land": "DE",
+            "Rufname/Pseudonym": "RotNeg",
+            "Teilnehmyliste_Couch": "",
+            "Bild Drehung": -90,
+        },
+        {
+            "Teilnehmyliste": True,
+            "Land": "DE",
+            "Rufname/Pseudonym": "RotStr",
+            "Teilnehmyliste_Couch": "",
+            "Bild Drehung": "270",
+        },
+    ])
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    result = load_participants(xlsx, placeholder_path, image_output_dir=out_dir)
+    assert [p["image_rotation"] for p in result] == [0, 90, 270, 270]

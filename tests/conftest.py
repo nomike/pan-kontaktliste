@@ -22,6 +22,7 @@ HEADERS = [
     "Telefonnummer (mit Ländercode!)",
     "Familiename",
     "Vorname",
+    "Bild Drehung",
 ]
 
 

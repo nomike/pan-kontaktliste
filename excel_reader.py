@@ -33,6 +33,20 @@ DATA_PHONE = "Telefonnummer (mit Ländercode!)"
 DATA_FAMILIENNAME = "Familiename"
 DATA_VORNAME = "Vorname"
 DATA_BILD = "Bild"
+DATA_BILD_DREHUNG = "Bild Drehung"
+
+
+def _parse_rotation(value: Any) -> int:
+    """Parse rotation angle in degrees (counter-clockwise). Empty or invalid -> 0."""
+    if value is None:
+        return 0
+    if isinstance(value, str) and not value.strip():
+        return 0
+    try:
+        angle = int(float(value))
+    except (TypeError, ValueError):
+        return 0
+    return angle % 360
 
 
 def _truthy(value: Any) -> bool:
@@ -121,7 +135,7 @@ def load_participants(
     Load workbook, filter by Teilnehmyliste, apply per-field consent, resolve image or placeholder.
     If image_output_dir is given, extracted/placeholder images are copied there (for LaTeX build).
     Returns list of participant dicts with keys: land, plz, ort, rufname, couch, email?, phone?,
-    nachname?, vorname?, image_path (always set).
+    nachname?, vorname?, image_path (always set), image_rotation (degrees, counter-clockwise).
     """
     xlsx_path = Path(xlsx_path)
     placeholder_image_path = Path(placeholder_image_path)
@@ -212,6 +226,7 @@ def load_participants(
             "rufname": rufname,
             "couch": couch,
             "image_path": image_path,
+            "image_rotation": _parse_rotation(cell(row_idx, DATA_BILD_DREHUNG)),
         }
         if email_ok:
             p["email"] = _str(cell(row_idx, DATA_EMAIL))
