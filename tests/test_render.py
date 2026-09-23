@@ -97,8 +97,24 @@ def test_render_html_escapes_content(tmp_path: Path, placeholder_path: Path) -> 
     assert "&amp;" in content
 
 
+def test_image_to_data_url_exif_orientation(tmp_path: Path) -> None:
+    """EXIF orientation 6 (rotate 90 CW) is applied before thumbnailing."""
+    src = tmp_path / "exif.jpg"
+    img = Image.new("RGB", (200, 100), color=(0, 0, 255))
+    # Pillow writes Orientation via exif; tag 274 = Orientation
+    exif = img.getexif()
+    exif[274] = 6  # Rotate 90 CW → tall image
+    img.save(src, format="JPEG", exif=exif)
+
+    data_url = _image_to_data_url(src, rotation=0)
+    assert data_url.startswith("data:image/png;base64,")
+    raw = base64.b64decode(data_url.split(",", 1)[1])
+    with Image.open(io.BytesIO(raw)) as thumb:
+        assert thumb.height >= thumb.width
+
+
 def test_image_to_data_url_rotation(tmp_path: Path) -> None:
-    """Rotation swaps width and height before thumbnailing."""
+    """Manual rotation swaps width and height before thumbnailing."""
     src = tmp_path / "wide.png"
     Image.new("RGB", (200, 100), color=(255, 0, 0)).save(src)
 

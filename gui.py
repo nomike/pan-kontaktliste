@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-GUI for PAN Kontaktliste: select Excel file and HTML destination, then generate contact list.
+GUI for PAN Kontaktliste: log in to SeaTable, pick a meetup base, generate HTML.
 Uses wxPython for a native look on Windows, macOS, and Linux.
+Credentials are kept in memory only for the lifetime of the process.
 """
 from __future__ import annotations
 
@@ -20,9 +21,17 @@ try:
 except ImportError:
     _HAS_SVG = False
 
-# Project modules
-from excel_reader import load_participants
 from render import render_html
+from seatable_reader import (
+    DEFAULT_SERVER_URL,
+    BaseInfo,
+    SeaTableAuthError,
+    SeaTableError,
+    SeaTableSession,
+    list_bases,
+    load_participants,
+    login,
+)
 from version import get_version
 
 
@@ -35,16 +44,92 @@ def _resource_path(relative: str) -> Path:
     return base / relative
 
 
+class LoginDialog(wx.Dialog):
+    """Ask for SeaTable username and password (not persisted)."""
+
+    def __init__(self, parent: wx.Window | None = None) -> None:
+        super().__init__(parent, title="Anmeldung bei SeaTable", size=(460, 220))
+        self.SetMinSize((420, 200))
+
+        panel = wx.Panel(self)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        grid = wx.FlexGridSizer(3, 2, 8, 8)
+        grid.AddGrowableCol(1, 1)
+
+        grid.Add(wx.StaticText(panel, label="Server:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.server = wx.TextCtrl(panel, value=DEFAULT_SERVER_URL)
+        grid.Add(self.server, 1, wx.EXPAND)
+
+        grid.Add(wx.StaticText(panel, label="E-Mail / Benutzername:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.username = wx.TextCtrl(panel)
+        grid.Add(self.username, 1, wx.EXPAND)
+
+        grid.Add(wx.StaticText(panel, label="Passwort:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.password = wx.TextCtrl(panel, style=wx.TE_PASSWORD)
+        grid.Add(self.password, 1, wx.EXPAND)
+
+        sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 12)
+
+        hint = wx.StaticText(
+            panel,
+            label="Zugangsdaten werden nur im Speicher gehalten und nicht gespeichert.",
+        )
+        hint.Wrap(420)
+        sizer.Add(hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+
+        btns = self.CreateStdDialogButtonSizer(wx.OK | wx.CANCEL)
+        if btns:
+            sizer.Add(btns, 0, wx.EXPAND | wx.ALL, 8)
+
+        panel.SetSizer(sizer)
+        self.Layout()
+        self.username.SetFocus()
+
+    def values(self) -> tuple[str, str, str]:
+        return (
+            self.username.GetValue().strip(),
+            self.password.GetValue(),
+            self.server.GetValue().strip() or DEFAULT_SERVER_URL,
+        )
+
+
 class MainFrame(wx.Frame):
-    def __init__(self) -> None:
-        super().__init__(None, title="PAN Kontaktliste", size=(580, 300))
-        self.SetMinSize((520, 280))
+    def __init__(self, session: SeaTableSession) -> None:
+        super().__init__(None, title="PAN Kontaktliste", size=(640, 520))
+        self.SetMinSize((560, 440))
+        self._session = session
+        self._bases: list[BaseInfo] = []
+        self._filtered: list[BaseInfo] = []
         self._app_icon = None
         self._set_icon()
 
         self._panel = wx.Panel(self)
         panel = self._panel
         sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Filter + refresh
+        row_filter = wx.BoxSizer(wx.HORIZONTAL)
+        lbl_filter = wx.StaticText(panel, label="Base filtern:")
+        row_filter.Add(lbl_filter, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.filter_ctrl = wx.TextCtrl(panel)
+        self.filter_ctrl.SetHint("z. B. Wintertreffen")
+        self.filter_ctrl.Bind(wx.EVT_TEXT, self._on_filter_changed)
+        row_filter.Add(self.filter_ctrl, 1, wx.EXPAND | wx.RIGHT, 6)
+        btn_refresh = wx.Button(panel, label="Aktualisieren")
+        btn_refresh.Bind(wx.EVT_BUTTON, self._on_refresh_bases)
+        row_filter.Add(btn_refresh, 0)
+        sizer.Add(row_filter, 0, wx.EXPAND | wx.ALL, 6)
+
+        sizer.Add(
+            wx.StaticText(panel, label="Treffen (SeaTable-Base) wählen:"),
+            0,
+            wx.LEFT | wx.RIGHT | wx.TOP,
+            6,
+        )
+        self.base_list = wx.ListBox(panel, style=wx.LB_SINGLE)
+        self.base_list.Bind(wx.EVT_LISTBOX, self._on_base_selected)
+        sizer.Add(self.base_list, 1, wx.EXPAND | wx.ALL, 6)
 
         # Meetup name row
         row_meetup = wx.BoxSizer(wx.HORIZONTAL)
@@ -57,20 +142,7 @@ class MainFrame(wx.Frame):
         row_meetup.Add(self.meetup_name, 1, wx.EXPAND)
         sizer.Add(row_meetup, 0, wx.EXPAND | wx.ALL, 6)
 
-        # Excel row (label has MinSize so it isn't clipped on Windows)
-        row1 = wx.BoxSizer(wx.HORIZONTAL)
-        lbl_xlsx = wx.StaticText(panel, label="Excel-Datei:")
-        w = lbl_xlsx.GetTextExtent("Excel-Datei:")[0]
-        lbl_xlsx.SetMinSize((max(w, 100) + 8, -1))
-        row1.Add(lbl_xlsx, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        self.xlsx_path = wx.TextCtrl(panel, value="", size=(320, -1))
-        row1.Add(self.xlsx_path, 1, wx.EXPAND | wx.RIGHT, 6)
-        btn_xlsx = wx.Button(panel, label="Durchsuchen ...")
-        btn_xlsx.Bind(wx.EVT_BUTTON, self._on_choose_xlsx)
-        row1.Add(btn_xlsx, 0)
-        sizer.Add(row1, 0, wx.EXPAND | wx.ALL, 6)
-
-        # HTML row (label has MinSize so it isn't clipped on Windows)
+        # HTML row
         row2 = wx.BoxSizer(wx.HORIZONTAL)
         lbl_html = wx.StaticText(panel, label="HTML-Datei speichern unter:")
         w = lbl_html.GetTextExtent("HTML-Datei speichern unter:")[0]
@@ -83,19 +155,16 @@ class MainFrame(wx.Frame):
         row2.Add(btn_html, 0)
         sizer.Add(row2, 0, wx.EXPAND | wx.ALL, 6)
 
-        # Checkbox
         self.open_browser_cb = wx.CheckBox(
             panel, label="HTML nach dem Erstellen im Browser öffnen"
         )
         self.open_browser_cb.SetValue(True)
         sizer.Add(self.open_browser_cb, 0, wx.LEFT | wx.TOP, 8)
 
-        # Create button
         create_btn = wx.Button(panel, label="Kontaktliste erstellen")
         create_btn.Bind(wx.EVT_BUTTON, self._on_create_list)
         sizer.Add(create_btn, 0, wx.ALL, 16)
 
-        # Menu: Help → About
         menubar = wx.MenuBar()
         help_menu = wx.Menu()
         about_item = help_menu.Append(wx.ID_ABOUT, "Über PAN Kontaktliste...")
@@ -106,6 +175,7 @@ class MainFrame(wx.Frame):
         panel.SetSizer(sizer)
         panel.Layout()
         self.Bind(wx.EVT_SHOW, self._on_show)
+        wx.CallAfter(self._load_bases)
 
     def _set_icon(self) -> None:
         if not _HAS_SVG:
@@ -129,7 +199,6 @@ class MainFrame(wx.Frame):
             pass
 
     def _on_show(self, event: wx.ShowEvent) -> None:
-        """Force layout on first show so the window displays correctly on Windows."""
         if event.IsShown():
             wx.CallAfter(self._do_layout)
 
@@ -144,8 +213,8 @@ class MainFrame(wx.Frame):
         info.SetName("PAN Kontaktliste")
         info.SetVersion(get_version())
         info.SetDescription(
-            "Erstellt aus einer Excel-Anmeldeliste eine HTML-Kontaktliste für Teilnehmerinnen und Teilnehmer "
-            "(einwilligungsbasiert). Lizenz: GPL-3.0-or-later."
+            "Erstellt aus einer SeaTable-Anmeldeliste eine HTML-Kontaktliste für "
+            "Teilnehmerinnen und Teilnehmer (einwilligungsbasiert). Lizenz: GPL-3.0-or-later."
         )
         info.SetLicense(
             "Dieses Programm steht unter der GNU General Public License v3.0 (GPLv3).\n"
@@ -153,16 +222,6 @@ class MainFrame(wx.Frame):
         )
         info.SetWebSite("https://github.com/nomike/pan-kontaktliste")
         wx.adv.AboutBox(info)
-
-    def _on_choose_xlsx(self, _event: wx.CommandEvent) -> None:
-        with wx.FileDialog(
-            self,
-            "Excel-Datei wählen",
-            wildcard="Excel-Dateien (*.xlsx)|*.xlsx|Alle Dateien (*.*)|*.*",
-            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
-        ) as dlg:
-            if dlg.ShowModal() == wx.ID_OK:
-                self.xlsx_path.SetValue(dlg.GetPath())
 
     def _on_choose_html(self, _event: wx.CommandEvent) -> None:
         with wx.FileDialog(
@@ -178,12 +237,58 @@ class MainFrame(wx.Frame):
                     path += ".html"
                 self.html_path.SetValue(path)
 
+    def _on_refresh_bases(self, _event: wx.CommandEvent) -> None:
+        self._load_bases()
+
+    def _load_bases(self) -> None:
+        try:
+            wx.BeginBusyCursor()
+            self._bases = list_bases(self._session)
+        except SeaTableError as e:
+            wx.MessageBox(str(e), "Fehler", wx.OK | wx.ICON_ERROR)
+            self._bases = []
+        except Exception as e:
+            wx.MessageBox(str(e), "Fehler", wx.OK | wx.ICON_ERROR)
+            self._bases = []
+        finally:
+            try:
+                wx.EndBusyCursor()
+            except Exception:
+                pass
+        self._apply_filter()
+
+    def _on_filter_changed(self, _event: wx.CommandEvent) -> None:
+        self._apply_filter()
+
+    def _apply_filter(self) -> None:
+        needle = self.filter_ctrl.GetValue().strip().lower()
+        if needle:
+            self._filtered = [
+                b
+                for b in self._bases
+                if needle in b.name.lower() or needle in b.workspace_name.lower()
+            ]
+        else:
+            self._filtered = list(self._bases)
+        self.base_list.Set([b.label for b in self._filtered])
+
+    def _selected_base(self) -> BaseInfo | None:
+        idx = self.base_list.GetSelection()
+        if idx == wx.NOT_FOUND or idx < 0 or idx >= len(self._filtered):
+            return None
+        return self._filtered[idx]
+
+    def _on_base_selected(self, _event: wx.CommandEvent) -> None:
+        base = self._selected_base()
+        if base:
+            self.meetup_name.SetValue(base.name)
+
     def _on_create_list(self, _event: wx.CommandEvent) -> None:
-        xlsx = self.xlsx_path.GetValue().strip()
+        base = self._selected_base()
         html = self.html_path.GetValue().strip()
-        if not xlsx:
+        if base is None:
             wx.MessageBox(
-                "Bitte wählen Sie eine Excel-Datei.",
+                "Bitte wählen Sie ein Treffen (SeaTable-Base).",
                 "Eingabe fehlt",
                 wx.OK | wx.ICON_WARNING,
             )
@@ -206,32 +311,76 @@ class MainFrame(wx.Frame):
             return
 
         try:
+            wx.BeginBusyCursor()
             with tempfile.TemporaryDirectory(prefix="pan_contact_") as build_dir:
                 build_path = Path(build_dir)
-                participants = load_participants(xlsx, placeholder, image_output_dir=build_path)
+                participants = load_participants(
+                    self._session,
+                    base.workspace_id,
+                    base.name,
+                    placeholder,
+                    image_output_dir=build_path,
+                )
                 if not participants:
                     wx.MessageBox(
-                        "In der Excel-Datei sind keine Einträge mit aktivierter Teilnehmyliste.",
+                        "In der Base sind keine Einträge mit aktivierter Teilnehmyliste.",
                         "Keine Teilnehmer",
                         wx.OK | wx.ICON_INFORMATION,
                     )
                     return
-                meetup_name = self.meetup_name.GetValue().strip()
+                meetup_name = self.meetup_name.GetValue().strip() or base.name
                 render_html(participants, Path(html), meetup_name=meetup_name)
             msg = f"Die Kontaktliste wurde erstellt:\n{html}"
             if self.open_browser_cb.GetValue():
                 webbrowser.open(f"file://{Path(html).resolve()}")
-                msg += "\n\nDie Liste wurde im Browser geöffnet. Zum Erzeugen einer PDF: Drucken → Als PDF speichern."
+                msg += (
+                    "\n\nDie Liste wurde im Browser geöffnet. "
+                    "Zum Erzeugen einer PDF: Drucken → Als PDF speichern."
+                )
             wx.MessageBox(msg, "Fertig", wx.OK | wx.ICON_INFORMATION)
+        except (SeaTableError, SeaTableAuthError) as e:
+            wx.MessageBox(str(e), "SeaTable-Fehler", wx.OK | wx.ICON_ERROR)
         except FileNotFoundError as e:
             wx.MessageBox(str(e), "Datei fehlt", wx.OK | wx.ICON_ERROR)
         except Exception as e:
             wx.MessageBox(str(e), "Fehler", wx.OK | wx.ICON_ERROR)
+        finally:
+            try:
+                wx.EndBusyCursor()
+            except Exception:
+                pass
+
+
+def _prompt_login() -> SeaTableSession | None:
+    """Show login dialog until success or cancel. Returns None if user cancels."""
+    while True:
+        dlg = LoginDialog(None)
+        result = dlg.ShowModal()
+        if result != wx.ID_OK:
+            dlg.Destroy()
+            return None
+        username, password, server = dlg.values()
+        dlg.Destroy()
+        try:
+            wx.BeginBusyCursor()
+            return login(username, password, server)
+        except SeaTableAuthError as e:
+            wx.MessageBox(str(e), "Anmeldung fehlgeschlagen", wx.OK | wx.ICON_ERROR)
+        except Exception as e:
+            wx.MessageBox(str(e), "Anmeldung fehlgeschlagen", wx.OK | wx.ICON_ERROR)
+        finally:
+            try:
+                wx.EndBusyCursor()
+            except Exception:
+                pass
 
 
 def run_gui() -> None:
     app = wx.App()
-    frame = MainFrame()
+    session = _prompt_login()
+    if session is None:
+        return
+    frame = MainFrame(session)
     frame.Show()
     app.MainLoop()
 
