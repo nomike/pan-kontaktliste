@@ -88,6 +88,19 @@ def _str(value: Any) -> str:
     return s if s else ""
 
 
+def _format_connection_error(
+    exc: ConnectionError,
+    *,
+    context: str = "SeaTable-Anfrage fehlgeschlagen",
+) -> str:
+    args = getattr(exc, "args", ())
+    if len(args) >= 2:
+        status, body = args[0], args[1]
+        return f"{context} (HTTP {status}): {body}"
+    detail = str(exc).strip()
+    return f"{context}: {detail}" if detail else context
+
+
 def login(
     username: str,
     password: str,
@@ -105,20 +118,14 @@ def login(
     try:
         account.auth()
     except ConnectionError as e:
-        raise SeaTableAuthError(_format_connection_error(e)) from e
+        raise SeaTableAuthError(
+            _format_connection_error(e, context="Anmeldung fehlgeschlagen")
+        ) from e
     except Exception as e:
         raise SeaTableAuthError(str(e) or "Anmeldung fehlgeschlagen.") from e
     if not account.token:
         raise SeaTableAuthError("Anmeldung fehlgeschlagen (kein Token).")
     return SeaTableSession(account=account, server_url=server_url)
-
-
-def _format_connection_error(exc: ConnectionError) -> str:
-    args = getattr(exc, "args", ())
-    if len(args) >= 2:
-        status, body = args[0], args[1]
-        return f"Anmeldung fehlgeschlagen (HTTP {status}): {body}"
-    return str(exc) or "Anmeldung fehlgeschlagen."
 
 
 def list_bases(session: SeaTableSession) -> list[BaseInfo]:
@@ -128,7 +135,9 @@ def list_bases(session: SeaTableSession) -> list[BaseInfo]:
     try:
         data = session.account.list_workspaces()
     except ConnectionError as e:
-        raise SeaTableError(_format_connection_error(e)) from e
+        raise SeaTableError(
+            _format_connection_error(e, context="Bases konnten nicht geladen werden")
+        ) from e
     except Exception as e:
         raise SeaTableError(str(e) or "Bases konnten nicht geladen werden.") from e
 
@@ -186,7 +195,11 @@ def _open_base(session: SeaTableSession, workspace_id: int, base_name: str):
     try:
         return session.account.get_base(workspace_id, base_name)
     except ConnectionError as e:
-        raise SeaTableError(_format_connection_error(e)) from e
+        raise SeaTableError(
+            _format_connection_error(
+                e, context=f"Base „{base_name}“ konnte nicht geöffnet werden"
+            )
+        ) from e
     except Exception as e:
         raise SeaTableError(str(e) or f"Base „{base_name}“ konnte nicht geöffnet werden.") from e
 

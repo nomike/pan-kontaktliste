@@ -48,31 +48,34 @@ class LoginDialog(wx.Dialog):
     """Ask for SeaTable username and password (not persisted)."""
 
     def __init__(self, parent: wx.Window | None = None) -> None:
-        super().__init__(parent, title="Anmeldung bei SeaTable", size=(460, 220))
-        self.SetMinSize((420, 200))
+        super().__init__(parent, title="Anmeldung bei SeaTable", size=(460, 240))
+        self.SetMinSize((420, 220))
 
-        panel = wx.Panel(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
 
         grid = wx.FlexGridSizer(3, 2, 8, 8)
         grid.AddGrowableCol(1, 1)
 
-        grid.Add(wx.StaticText(panel, label="Server:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.server = wx.TextCtrl(panel, value=DEFAULT_SERVER_URL)
+        grid.Add(wx.StaticText(self, label="Server:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.server = wx.TextCtrl(self, value=DEFAULT_SERVER_URL)
         grid.Add(self.server, 1, wx.EXPAND)
 
-        grid.Add(wx.StaticText(panel, label="E-Mail / Benutzername:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.username = wx.TextCtrl(panel)
+        grid.Add(
+            wx.StaticText(self, label="E-Mail / Benutzername:"),
+            0,
+            wx.ALIGN_CENTER_VERTICAL,
+        )
+        self.username = wx.TextCtrl(self)
         grid.Add(self.username, 1, wx.EXPAND)
 
-        grid.Add(wx.StaticText(panel, label="Passwort:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.password = wx.TextCtrl(panel, style=wx.TE_PASSWORD)
+        grid.Add(wx.StaticText(self, label="Passwort:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.password = wx.TextCtrl(self, style=wx.TE_PASSWORD)
         grid.Add(self.password, 1, wx.EXPAND)
 
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 12)
 
         hint = wx.StaticText(
-            panel,
+            self,
             label="Zugangsdaten werden nur im Speicher gehalten und nicht gespeichert.",
         )
         hint.Wrap(420)
@@ -82,7 +85,7 @@ class LoginDialog(wx.Dialog):
         if btns:
             sizer.Add(btns, 0, wx.EXPAND | wx.ALL, 8)
 
-        panel.SetSizer(sizer)
+        self.SetSizer(sizer)
         self.Layout()
         self.username.SetFocus()
 

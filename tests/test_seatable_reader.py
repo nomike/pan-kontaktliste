@@ -51,6 +51,18 @@ def test_image_urls_from_cell() -> None:
     ]
 
 
+def test_format_connection_error_context() -> None:
+    from seatable_reader import _format_connection_error
+
+    msg = _format_connection_error(
+        ConnectionError(429, "rate limited"),
+        context="Bases konnten nicht geladen werden",
+    )
+    assert msg.startswith("Bases konnten nicht geladen werden")
+    assert "429" in msg
+    assert "Anmeldung" not in msg
+
+
 def test_login_success() -> None:
     account = MagicMock()
     account.token = "tok"
