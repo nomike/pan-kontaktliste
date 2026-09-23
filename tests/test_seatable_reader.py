@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+import threading
 
 import pytest
 
@@ -23,6 +24,7 @@ from seatable_reader import (
     DATA_VORNAME,
     BaseInfo,
     SeaTableAuthError,
+    SeaTableCancelled,
     SeaTableSession,
     _image_urls_from_cell,
     _truthy,
@@ -61,6 +63,84 @@ def test_format_connection_error_context() -> None:
     assert msg.startswith("Bases konnten nicht geladen werden")
     assert "429" in msg
     assert "Anmeldung" not in msg
+
+
+def test_list_bases_accepts_workspace_id_alias() -> None:
+    account = MagicMock()
+    account.list_workspaces.return_value = {
+        "workspace_list": [
+            {
+                "workspace_id": 99,
+                "workspace_name": "Alias WS",
+                "table_list": [{"name": "Meetup", "workspace_id": 99}],
+            }
+        ]
+    }
+    session = SeaTableSession(account=account, server_url="https://cloud.seatable.io")
+    bases = list_bases(session)
+    assert len(bases) == 1
+    assert bases[0].workspace_id == 99
+    assert bases[0].name == "Meetup"
+
+
+def test_load_participants_reports_progress_and_honours_cancel(
+    tmp_path: Path, placeholder_path: Path
+) -> None:
+    base = MagicMock()
+    base.get_metadata.return_value = {
+        "tables": [{"name": "T", "columns": [{"name": CONSENT_LIST}]}]
+    }
+    base.list_views.return_value = []
+    base.list_rows.return_value = [
+        _row(
+            **{
+                CONSENT_BILD: True,
+                DATA_BILD: [
+                    "https://cloud.seatable.io/workspace/1/asset/"
+                    "11111111-1111-1111-1111-111111111111/images/2026-01/a.jpg"
+                ],
+                DATA_RUFNAME: "A",
+            }
+        ),
+        _row(
+            **{
+                CONSENT_BILD: True,
+                DATA_BILD: [
+                    "https://cloud.seatable.io/workspace/1/asset/"
+                    "11111111-1111-1111-1111-111111111111/images/2026-01/b.jpg"
+                ],
+                DATA_RUFNAME: "B",
+            }
+        ),
+    ]
+    base.dtable_uuid = "11111111-1111-1111-1111-111111111111"
+    base.download_file.side_effect = lambda url, path: Path(path).write_bytes(b"img")
+
+    account = MagicMock()
+    account.get_base.return_value = base
+    session = SeaTableSession(account=account, server_url="https://cloud.seatable.io")
+
+    messages: list[str] = []
+    cancel = threading.Event()
+
+    def progress(msg: str, current: int, total: int) -> None:
+        messages.append(msg)
+        if "Bild 1/" in msg:
+            cancel.set()
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    with pytest.raises(SeaTableCancelled):
+        load_participants(
+            session,
+            1,
+            "Base",
+            placeholder_path,
+            image_output_dir=out_dir,
+            progress=progress,
+            cancel_event=cancel,
+        )
+    assert any("Bild 1/" in m for m in messages)
 
 
 def test_login_success() -> None:

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +19,7 @@ import requests
 from seatable_api import Account
 
 DEFAULT_SERVER_URL = "https://cloud.seatable.io"
+DOWNLOAD_TIMEOUT_S = 20
 
 # Column names in the SeaTable base (exact match)
 CONSENT_LIST = "Teilnehmyliste"
@@ -36,6 +39,8 @@ DATA_PHONE = "Telefonnummer (mit Ländercode!)"
 DATA_FAMILIENNAME = "Familiename"
 DATA_VORNAME = "Vorname"
 DATA_BILD = "Bild"
+
+ProgressCallback = Callable[[str, int, int], None]
 
 
 @dataclass(frozen=True)
@@ -69,6 +74,10 @@ class SeaTableError(Exception):
     """General SeaTable API / data error."""
 
 
+class SeaTableCancelled(SeaTableError):
+    """User cancelled a long-running SeaTable operation."""
+
+
 def _truthy(value: Any) -> bool:
     """Normalize SeaTable / Excel-like booleans and strings to bool."""
     if value is None:
@@ -99,6 +108,21 @@ def _format_connection_error(
         return f"{context} (HTTP {status}): {body}"
     detail = str(exc).strip()
     return f"{context}: {detail}" if detail else context
+
+
+def _check_cancelled(cancel_event: threading.Event | None) -> None:
+    if cancel_event is not None and cancel_event.is_set():
+        raise SeaTableCancelled("Abgebrochen.")
+
+
+def _report(
+    progress: ProgressCallback | None,
+    message: str,
+    current: int = 0,
+    total: int = 0,
+) -> None:
+    if progress is not None:
+        progress(message, current, total)
 
 
 def login(
@@ -170,8 +194,11 @@ def list_bases(session: SeaTableSession) -> list[BaseInfo]:
     for ws in workspace_list:
         if not isinstance(ws, dict):
             continue
-        wid = ws.get("id")
-        ws_name = _str(ws.get("name") or ws.get("owner_name") or "")
+        # SeaTable Cloud returns id/name; keep workspace_id/workspace_name as fallbacks.
+        wid = ws.get("id", ws.get("workspace_id"))
+        ws_name = _str(
+            ws.get("name") or ws.get("workspace_name") or ws.get("owner_name") or ""
+        )
         for key in ("table_list", "shared_table_list"):
             for entry in ws.get(key) or []:
                 if isinstance(entry, dict):
@@ -182,9 +209,9 @@ def list_bases(session: SeaTableSession) -> list[BaseInfo]:
         for entry in (data or {}).get(key) or []:
             if isinstance(entry, dict):
                 _add(
-                    entry.get("workspace_id"),
+                    entry.get("workspace_id", entry.get("id")),
                     entry.get("name"),
-                    _str(entry.get("workspace_name") or ""),
+                    _str(entry.get("workspace_name") or entry.get("name") or ""),
                 )
 
     bases.sort(key=lambda b: b.name.lower())
@@ -192,6 +219,7 @@ def list_bases(session: SeaTableSession) -> list[BaseInfo]:
 
 
 def _open_base(session: SeaTableSession, workspace_id: int, base_name: str):
+    # Account.get_base(workspace_id, base_name) — workspace_id is numeric (URL path).
     try:
         return session.account.get_base(workspace_id, base_name)
     except ConnectionError as e:
@@ -266,32 +294,51 @@ def _suffix_from_url(url: str) -> str:
     return ".jpg"
 
 
+def _asset_path_from_url(url: str) -> str | None:
+    """Extract /images/... or /files/... path for get_file_download_link."""
+    for marker in ("/images/", "/files/"):
+        idx = url.find(marker)
+        if idx >= 0:
+            return unquote(url[idx:])
+    # Relative forms without leading slash
+    for marker in ("images/", "files/"):
+        idx = url.find(marker)
+        if idx >= 0:
+            return "/" + unquote(url[idx:])
+    return None
+
+
 def _download_image(base, url: str, dest: Path) -> bool:
     """Download one SeaTable image URL to dest. Returns True on success."""
     try:
         base.download_file(url, str(dest))
         return dest.is_file() and dest.stat().st_size > 0
     except Exception:
-        # Fallback: path-based download link (URLs that include /images/...)
-        try:
-            marker = "/images/"
-            idx = url.find(marker)
-            if idx < 0:
-                marker = "/files/"
-                idx = url.find(marker)
-            if idx < 0:
-                return False
-            path = unquote(url[idx:])
-            link = base.get_file_download_link(path)
-            if not link:
-                return False
-            resp = requests.get(link, timeout=60)
-            if resp.status_code != 200 or not resp.content:
-                return False
-            dest.write_bytes(resp.content)
-            return True
-        except Exception:
+        pass
+
+    path = _asset_path_from_url(url)
+    if not path:
+        return False
+    try:
+        link = base.get_file_download_link(path)
+        if not link:
             return False
+        resp = requests.get(link, timeout=DOWNLOAD_TIMEOUT_S)
+        if resp.status_code != 200 or not resp.content:
+            return False
+        dest.write_bytes(resp.content)
+        return True
+    except Exception:
+        return False
+
+
+def _use_placeholder(placeholder_path: Path, image_output_dir: Path, index: int) -> str:
+    dest = image_output_dir / f"teilnehmer_{index}{placeholder_path.suffix}"
+    try:
+        shutil.copy2(placeholder_path, dest)
+        return str(dest)
+    except Exception:
+        return str(placeholder_path)
 
 
 def load_participants(
@@ -302,14 +349,15 @@ def load_participants(
     image_output_dir: Path | None = None,
     table_name: str | None = None,
     view_name: str | None = None,
+    progress: ProgressCallback | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> list[dict[str, Any]]:
     """
     Load rows from a SeaTable base, filter by Teilnehmyliste, apply per-field
     consent, and download images when consented.
 
-    Returns the same participant dict shape as the former Excel loader:
-    land, plz, ort, rufname, couch, image_path, and optional email/phone/
-    nachname/vorname.
+    ``progress(message, current, total)`` is called for UI updates (``total`` is
+    0 while the overall count is unknown). ``cancel_event`` may be set to abort.
     """
     placeholder_image_path = Path(placeholder_image_path)
     if image_output_dir is None:
@@ -318,10 +366,20 @@ def load_participants(
     image_output_dir.mkdir(parents=True, exist_ok=True)
     placeholder_path = placeholder_image_path.resolve()
 
+    _check_cancelled(cancel_event)
+    _report(progress, "Base wird geöffnet …", 0, 0)
     base = _open_base(session, workspace_id, base_name)
+
+    _check_cancelled(cancel_event)
+    _report(progress, "Tabelle wird ermittelt …", 0, 0)
     resolved_table = _pick_table_name(base, table_name)
     resolved_view = _pick_view_name(base, resolved_table, view_name)
 
+    _check_cancelled(cancel_event)
+    if resolved_view:
+        _report(progress, f"Zeilen werden geladen (Ansicht „{resolved_view}“) …", 0, 0)
+    else:
+        _report(progress, "Zeilen werden geladen …", 0, 0)
     try:
         if resolved_view:
             rows = base.list_rows(resolved_table, view_name=resolved_view) or []
@@ -330,54 +388,60 @@ def load_participants(
     except Exception as e:
         raise SeaTableError(str(e) or "Zeilen konnten nicht geladen werden.") from e
 
-    participants: list[dict[str, Any]] = []
+    _check_cancelled(cancel_event)
+    consented: list[dict[str, Any]] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
-        if not _truthy(row.get(CONSENT_LIST)):
-            continue
+        if _truthy(row.get(CONSENT_LIST)):
+            consented.append(row)
 
+    if not consented:
+        _report(progress, "Keine Teilnehmer mit Teilnehmyliste", 0, 0)
+        return []
+
+    # Count how many image downloads we will attempt (for a determinate gauge).
+    download_jobs = 0
+    for row in consented:
+        if _truthy(row.get(CONSENT_BILD)) and _image_urls_from_cell(row.get(DATA_BILD)):
+            download_jobs += 1
+
+    participants: list[dict[str, Any]] = []
+    downloads_done = 0
+    total_steps = max(download_jobs, 1)
+
+    for row in consented:
+        _check_cancelled(cancel_event)
         email_ok = _truthy(row.get(CONSENT_EMAIL))
         phone_ok = _truthy(row.get(CONSENT_PHONE))
         nachname_ok = _truthy(row.get(CONSENT_NACHNAME))
         vorname_ok = _truthy(row.get(CONSENT_VORNAME))
         bild_ok = _truthy(row.get(CONSENT_BILD))
+        rufname = _str(row.get(DATA_RUFNAME))
+        idx = len(participants)
 
-        image_path = str(placeholder_path)
+        image_path = _use_placeholder(placeholder_path, image_output_dir, idx)
         if bild_ok:
             urls = _image_urls_from_cell(row.get(DATA_BILD))
             if urls:
+                downloads_done += 1
+                label = rufname or f"Teilnehmer {idx + 1}"
+                _report(
+                    progress,
+                    f"Bild {downloads_done}/{download_jobs}: {label}",
+                    downloads_done,
+                    download_jobs,
+                )
                 ext = _suffix_from_url(urls[0])
-                dest = image_output_dir / f"teilnehmer_{len(participants)}{ext}"
+                dest = image_output_dir / f"teilnehmer_{idx}{ext}"
                 if _download_image(base, urls[0], dest):
                     image_path = str(dest)
-                else:
-                    dest = image_output_dir / f"teilnehmer_{len(participants)}{placeholder_path.suffix}"
-                    try:
-                        shutil.copy2(placeholder_path, dest)
-                        image_path = str(dest)
-                    except Exception:
-                        image_path = str(placeholder_path)
-            else:
-                dest = image_output_dir / f"teilnehmer_{len(participants)}{placeholder_path.suffix}"
-                try:
-                    shutil.copy2(placeholder_path, dest)
-                    image_path = str(dest)
-                except Exception:
-                    image_path = str(placeholder_path)
-        else:
-            dest = image_output_dir / f"teilnehmer_{len(participants)}{placeholder_path.suffix}"
-            try:
-                shutil.copy2(placeholder_path, dest)
-                image_path = str(dest)
-            except Exception:
-                image_path = str(placeholder_path)
 
         p: dict[str, Any] = {
             "land": _str(row.get(DATA_LAND)),
             "plz": _str(row.get(DATA_PLZ)),
             "ort": _str(row.get(DATA_ORT)),
-            "rufname": _str(row.get(DATA_RUFNAME)),
+            "rufname": rufname,
             "couch": _str(row.get(DATA_COUCH)),
             "image_path": image_path,
         }
@@ -391,4 +455,5 @@ def load_participants(
             p["vorname"] = _str(row.get(DATA_VORNAME))
         participants.append(p)
 
+    _report(progress, f"{len(participants)} Teilnehmer geladen", total_steps, total_steps)
     return participants

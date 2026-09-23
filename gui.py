@@ -6,8 +6,10 @@ Credentials are kept in memory only for the lifetime of the process.
 """
 from __future__ import annotations
 
+import shutil
 import sys
 import tempfile
+import threading
 import webbrowser
 from pathlib import Path
 
@@ -26,6 +28,7 @@ from seatable_reader import (
     DEFAULT_SERVER_URL,
     BaseInfo,
     SeaTableAuthError,
+    SeaTableCancelled,
     SeaTableError,
     SeaTableSession,
     list_bases,
@@ -48,8 +51,11 @@ class LoginDialog(wx.Dialog):
     """Ask for SeaTable username and password (not persisted)."""
 
     def __init__(self, parent: wx.Window | None = None) -> None:
-        super().__init__(parent, title="Anmeldung bei SeaTable", size=(460, 240))
-        self.SetMinSize((420, 220))
+        super().__init__(
+            parent,
+            title="Anmeldung bei SeaTable",
+            style=wx.DEFAULT_DIALOG_STYLE,
+        )
 
         sizer = wx.BoxSizer(wx.VERTICAL)
 
@@ -57,7 +63,7 @@ class LoginDialog(wx.Dialog):
         grid.AddGrowableCol(1, 1)
 
         grid.Add(wx.StaticText(self, label="Server:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.server = wx.TextCtrl(self, value=DEFAULT_SERVER_URL)
+        self.server = wx.TextCtrl(self, value=DEFAULT_SERVER_URL, size=(280, -1))
         grid.Add(self.server, 1, wx.EXPAND)
 
         grid.Add(
@@ -65,11 +71,12 @@ class LoginDialog(wx.Dialog):
             0,
             wx.ALIGN_CENTER_VERTICAL,
         )
-        self.username = wx.TextCtrl(self)
+        self.username = wx.TextCtrl(self, size=(280, -1))
         grid.Add(self.username, 1, wx.EXPAND)
 
         grid.Add(wx.StaticText(self, label="Passwort:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.password = wx.TextCtrl(self, style=wx.TE_PASSWORD)
+        self.password = wx.TextCtrl(self, style=wx.TE_PASSWORD | wx.TE_PROCESS_ENTER, size=(280, -1))
+        self.password.Bind(wx.EVT_TEXT_ENTER, self._on_login)
         grid.Add(self.password, 1, wx.EXPAND)
 
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 12)
@@ -78,16 +85,25 @@ class LoginDialog(wx.Dialog):
             self,
             label="Zugangsdaten werden nur im Speicher gehalten und nicht gespeichert.",
         )
-        hint.Wrap(420)
+        hint.Wrap(400)
         sizer.Add(hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
-        btns = self.CreateStdDialogButtonSizer(wx.OK | wx.CANCEL)
-        if btns:
-            sizer.Add(btns, 0, wx.EXPAND | wx.ALL, 8)
+        btn_row = wx.BoxSizer(wx.HORIZONTAL)
+        btn_row.AddStretchSpacer(1)
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, label="Abbrechen")
+        login_btn = wx.Button(self, wx.ID_OK, label="Anmelden")
+        login_btn.SetDefault()
+        btn_row.Add(cancel_btn, 0, wx.RIGHT, 8)
+        btn_row.Add(login_btn, 0)
+        sizer.Add(btn_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
         self.SetSizer(sizer)
-        self.Layout()
+        sizer.Fit(self)
+        self.CentreOnParent() if parent else self.CentreOnScreen()
         self.username.SetFocus()
+
+    def _on_login(self, _event: wx.CommandEvent) -> None:
+        self.EndModal(wx.ID_OK)
 
     def values(self) -> tuple[str, str, str]:
         return (
@@ -97,14 +113,64 @@ class LoginDialog(wx.Dialog):
         )
 
 
+class ProgressDialog(wx.Dialog):
+    """Determinate progress for long-running SeaTable work (not a bare spinner)."""
+
+    def __init__(self, parent: wx.Window, title: str = "Kontaktliste wird erstellt") -> None:
+        super().__init__(
+            parent,
+            title=title,
+            style=wx.DEFAULT_DIALOG_STYLE & ~wx.CLOSE_BOX,
+        )
+        self.cancel_event = threading.Event()
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.status = wx.StaticText(self, label="Vorbereitung …")
+        self.status.Wrap(420)
+        sizer.Add(self.status, 0, wx.EXPAND | wx.ALL, 12)
+
+        self.gauge = wx.Gauge(self, range=100, style=wx.GA_HORIZONTAL | wx.GA_SMOOTH)
+        self.gauge.Pulse()
+        sizer.Add(self.gauge, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+
+        self.detail = wx.StaticText(self, label="")
+        sizer.Add(self.detail, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, label="Abbrechen")
+        cancel_btn.Bind(wx.EVT_BUTTON, self._on_cancel)
+        sizer.Add(cancel_btn, 0, wx.ALIGN_RIGHT | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+
+        self.SetSizer(sizer)
+        sizer.Fit(self)
+        self.SetMinSize((460, -1))
+        self.CentreOnParent()
+
+    def _on_cancel(self, _event: wx.CommandEvent) -> None:
+        self.cancel_event.set()
+        self.status.SetLabel("Abbruch wird ausgeführt …")
+        self.Layout()
+
+    def update_progress(self, message: str, current: int, total: int) -> None:
+        self.status.SetLabel(message)
+        if total > 0:
+            self.gauge.SetRange(max(total, 1))
+            self.gauge.SetValue(min(max(current, 0), total))
+            self.detail.SetLabel(f"{current} / {total}")
+        else:
+            self.gauge.Pulse()
+            self.detail.SetLabel("")
+        self.Layout()
+
+
 class MainFrame(wx.Frame):
     def __init__(self, session: SeaTableSession) -> None:
-        super().__init__(None, title="PAN Kontaktliste", size=(640, 520))
-        self.SetMinSize((560, 440))
+        super().__init__(None, title="PAN Kontaktliste", size=(640, 560))
+        self.SetMinSize((560, 480))
         self._session = session
         self._bases: list[BaseInfo] = []
         self._filtered: list[BaseInfo] = []
         self._app_icon = None
+        self._busy = False
         self._set_icon()
 
         self._panel = wx.Panel(self)
@@ -164,9 +230,9 @@ class MainFrame(wx.Frame):
         self.open_browser_cb.SetValue(True)
         sizer.Add(self.open_browser_cb, 0, wx.LEFT | wx.TOP, 8)
 
-        create_btn = wx.Button(panel, label="Kontaktliste erstellen")
-        create_btn.Bind(wx.EVT_BUTTON, self._on_create_list)
-        sizer.Add(create_btn, 0, wx.ALL, 16)
+        self.create_btn = wx.Button(panel, label="Kontaktliste erstellen")
+        self.create_btn.Bind(wx.EVT_BUTTON, self._on_create_list)
+        sizer.Add(self.create_btn, 0, wx.ALL, 16)
 
         menubar = wx.MenuBar()
         help_menu = wx.Menu()
@@ -287,6 +353,8 @@ class MainFrame(wx.Frame):
             self.meetup_name.SetValue(base.name)
 
     def _on_create_list(self, _event: wx.CommandEvent) -> None:
+        if self._busy:
+            return
         base = self._selected_base()
         html = self.html_path.GetValue().strip()
         if base is None:
@@ -313,45 +381,89 @@ class MainFrame(wx.Frame):
             )
             return
 
-        try:
-            wx.BeginBusyCursor()
-            with tempfile.TemporaryDirectory(prefix="pan_contact_") as build_dir:
-                build_path = Path(build_dir)
+        meetup_name = self.meetup_name.GetValue().strip() or base.name
+        open_browser = self.open_browser_cb.GetValue()
+        html_path = Path(html)
+
+        self._busy = True
+        self.create_btn.Disable()
+        progress_dlg = ProgressDialog(self)
+
+        def on_progress(message: str, current: int, total: int) -> None:
+            wx.CallAfter(progress_dlg.update_progress, message, current, total)
+
+        def worker() -> None:
+            build_dir = Path(tempfile.mkdtemp(prefix="pan_contact_"))
+            try:
                 participants = load_participants(
                     self._session,
                     base.workspace_id,
                     base.name,
                     placeholder,
-                    image_output_dir=build_path,
+                    image_output_dir=build_dir,
+                    progress=on_progress,
+                    cancel_event=progress_dlg.cancel_event,
                 )
+                if progress_dlg.cancel_event.is_set():
+                    raise SeaTableCancelled("Abgebrochen.")
                 if not participants:
-                    wx.MessageBox(
-                        "In der Base sind keine Einträge mit aktivierter Teilnehmyliste.",
-                        "Keine Teilnehmer",
-                        wx.OK | wx.ICON_INFORMATION,
-                    )
+                    wx.CallAfter(self._on_create_done, progress_dlg, None, None, False)
                     return
-                meetup_name = self.meetup_name.GetValue().strip() or base.name
-                render_html(participants, Path(html), meetup_name=meetup_name)
-            msg = f"Die Kontaktliste wurde erstellt:\n{html}"
-            if self.open_browser_cb.GetValue():
-                webbrowser.open(f"file://{Path(html).resolve()}")
-                msg += (
-                    "\n\nDie Liste wurde im Browser geöffnet. "
-                    "Zum Erzeugen einer PDF: Drucken → Als PDF speichern."
+                on_progress("HTML wird erzeugt …", 0, 0)
+                render_html(participants, html_path, meetup_name=meetup_name)
+                wx.CallAfter(
+                    self._on_create_done,
+                    progress_dlg,
+                    str(html_path),
+                    None,
+                    open_browser,
                 )
-            wx.MessageBox(msg, "Fertig", wx.OK | wx.ICON_INFORMATION)
-        except (SeaTableError, SeaTableAuthError) as e:
-            wx.MessageBox(str(e), "SeaTable-Fehler", wx.OK | wx.ICON_ERROR)
-        except FileNotFoundError as e:
-            wx.MessageBox(str(e), "Datei fehlt", wx.OK | wx.ICON_ERROR)
-        except Exception as e:
-            wx.MessageBox(str(e), "Fehler", wx.OK | wx.ICON_ERROR)
-        finally:
-            try:
-                wx.EndBusyCursor()
-            except Exception:
-                pass
+            except SeaTableCancelled as e:
+                wx.CallAfter(self._on_create_done, progress_dlg, None, e, False)
+            except Exception as e:
+                wx.CallAfter(self._on_create_done, progress_dlg, None, e, False)
+            finally:
+                shutil.rmtree(build_dir, ignore_errors=True)
+
+        threading.Thread(target=worker, daemon=True).start()
+        progress_dlg.ShowModal()
+        progress_dlg.Destroy()
+
+    def _on_create_done(
+        self,
+        progress_dlg: ProgressDialog,
+        html: str | None,
+        error: BaseException | None,
+        open_browser: bool,
+    ) -> None:
+        if progress_dlg.IsModal():
+            progress_dlg.EndModal(wx.ID_CANCEL if error or html is None else wx.ID_OK)
+        self._busy = False
+        self.create_btn.Enable()
+
+        if isinstance(error, SeaTableCancelled):
+            wx.MessageBox("Vorgang abgebrochen.", "Abbruch", wx.OK | wx.ICON_INFORMATION)
+            return
+        if error is not None:
+            title = "SeaTable-Fehler" if isinstance(error, (SeaTableError, SeaTableAuthError)) else "Fehler"
+            wx.MessageBox(str(error), title, wx.OK | wx.ICON_ERROR)
+            return
+        if html is None:
+            wx.MessageBox(
+                "In der Base sind keine Einträge mit aktivierter Teilnehmyliste.",
+                "Keine Teilnehmer",
+                wx.OK | wx.ICON_INFORMATION,
+            )
+            return
+
+        msg = f"Die Kontaktliste wurde erstellt:\n{html}"
+        if open_browser:
+            webbrowser.open(f"file://{Path(html).resolve()}")
+            msg += (
+                "\n\nDie Liste wurde im Browser geöffnet. "
+                "Zum Erzeugen einer PDF: Drucken → Als PDF speichern."
+            )
+        wx.MessageBox(msg, "Fertig", wx.OK | wx.ICON_INFORMATION)
 
 
 def _prompt_login() -> SeaTableSession | None:
