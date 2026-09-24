@@ -73,6 +73,7 @@ pytest
 - `render.py` – Jinja2-Rendering der HTML-Vorlage (Bilder als Data-URLs)
 - `template/contact_list.html.j2` – HTML-Vorlage (Jinja2) für die Kontaktliste
 - `data/placeholder.png` – Platzhalterbild, wenn kein Bild oder keine Einwilligung
+- `data/app-icon.png` / `data/app-icon.ico` – Programm-Icon (Favicon von [polyamory.de](https://polyamory.de/))
 - `version.py` – Versionsanzeige (liest aus pyproject.toml)
 - `requirements.txt` – Python-Abhängigkeiten
 - `tests/` – Unit-Tests (pytest)

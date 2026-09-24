@@ -16,13 +16,6 @@ from pathlib import Path
 import wx
 import wx.adv
 
-try:
-    import wx.svg
-
-    _HAS_SVG = True
-except ImportError:
-    _HAS_SVG = False
-
 from render import render_html
 from seatable_reader import (
     DEFAULT_SERVER_URL,
@@ -45,6 +38,34 @@ def _resource_path(relative: str) -> Path:
     else:
         base = Path(__file__).resolve().parent
     return base / relative
+
+
+def _load_icon_bundle() -> wx.IconBundle | None:
+    """Build a multi-size icon bundle from the PAN site favicon (data/app-icon.png)."""
+    icon_path = _resource_path("data/app-icon.png")
+    if not icon_path.exists():
+        return None
+    try:
+        src = wx.Image(str(icon_path), wx.BITMAP_TYPE_PNG)
+        if not src.IsOk():
+            return None
+        icon_bundle = wx.IconBundle()
+        for size in (16, 32, 48, 64, 128, 256):
+            scaled = src.Scale(size, size, wx.IMAGE_QUALITY_HIGH)
+            bmp = wx.Bitmap(scaled)
+            icon = wx.Icon()
+            icon.CopyFromBitmap(bmp)
+            icon_bundle.AddIcon(icon)
+        return icon_bundle
+    except Exception:
+        return None
+
+
+def _icon_from_bundle(bundle: wx.IconBundle | None, size: int = 64) -> wx.Icon | None:
+    if bundle is None:
+        return None
+    icon = bundle.GetIcon(wx.Size(size, size))
+    return icon if icon.IsOk() else None
 
 
 class LoginDialog(wx.Dialog):
@@ -100,6 +121,9 @@ class LoginDialog(wx.Dialog):
         self.SetSizer(sizer)
         sizer.Fit(self)
         self.CentreOnParent() if parent else self.CentreOnScreen()
+        icon = _icon_from_bundle(_load_icon_bundle(), 32)
+        if icon:
+            self.SetIcon(icon)
         self.username.SetFocus()
 
     def _on_login(self, _event: wx.CommandEvent) -> None:
@@ -247,25 +271,11 @@ class MainFrame(wx.Frame):
         wx.CallAfter(self._load_bases)
 
     def _set_icon(self) -> None:
-        if not _HAS_SVG:
+        bundle = _load_icon_bundle()
+        if bundle is None:
             return
-        icon_path = _resource_path("data/polyamory-logo.svg")
-        if not icon_path.exists():
-            return
-        try:
-            svg_img = wx.svg.SVGimage.CreateFromFile(str(icon_path))
-            icon_bundle = wx.IconBundle()
-            for size in (16, 32, 48, 64, 128, 256):
-                bmp = svg_img.ConvertToScaledBitmap(wx.Size(size, size))
-                icon = wx.Icon()
-                icon.CopyFromBitmap(bmp)
-                icon_bundle.AddIcon(icon)
-            self.SetIcons(icon_bundle)
-            bmp = svg_img.ConvertToScaledBitmap(wx.Size(64, 64))
-            self._app_icon = wx.Icon()
-            self._app_icon.CopyFromBitmap(bmp)
-        except Exception:
-            pass
+        self.SetIcons(bundle)
+        self._app_icon = _icon_from_bundle(bundle, 64)
 
     def _on_show(self, event: wx.ShowEvent) -> None:
         if event.IsShown():
