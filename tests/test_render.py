@@ -1,28 +1,31 @@
-"""Tests for render: HTML output, image data URLs, edge cases."""
+"""Tests for render: PDF output, image data URLs, edge cases."""
 from __future__ import annotations
 
 import base64
 import io
 from pathlib import Path
 
-import pytest
 from PIL import Image
 
-from render import _image_to_data_url, render_html
+from render import _build_html, _image_to_data_url, render_pdf
 
 
-def test_render_html_empty_participants(tmp_path: Path, placeholder_path: Path) -> None:
-    """Empty participant list produces valid HTML with empty columns."""
-    out = tmp_path / "out.html"
-    render_html([], out)
-    assert out.exists()
-    content = out.read_text(encoding="utf-8")
-    assert "Teilnehmendenkontaktliste" in content
-    assert "columns" in content
+def _assert_pdf(path: Path) -> None:
+    assert path.exists()
+    raw = path.read_bytes()
+    assert raw.startswith(b"%PDF")
+    assert len(raw) > 100
 
 
-def test_render_html_one_participant(tmp_path: Path, placeholder_path: Path) -> None:
-    """One participant with image_path produces HTML with data URL."""
+def test_render_pdf_empty_participants(tmp_path: Path, placeholder_path: Path) -> None:
+    """Empty participant list produces a valid PDF."""
+    out = tmp_path / "out.pdf"
+    render_pdf([], out)
+    _assert_pdf(out)
+
+
+def test_render_pdf_one_participant(tmp_path: Path, placeholder_path: Path) -> None:
+    """One participant with image_path produces a PDF; HTML includes data URL."""
     participants = [
         {
             "land": "DE",
@@ -31,15 +34,16 @@ def test_render_html_one_participant(tmp_path: Path, placeholder_path: Path) -> 
             "image_path": str(placeholder_path),
         },
     ]
-    out = tmp_path / "out.html"
-    render_html(participants, out)
-    assert out.exists()
-    content = out.read_text(encoding="utf-8")
-    assert "Test" in content
-    assert "data:image/png;base64," in content
+    html = _build_html(participants)
+    assert "Test" in html
+    assert "data:image/png;base64," in html
+
+    out = tmp_path / "out.pdf"
+    render_pdf(participants, out)
+    _assert_pdf(out)
 
 
-def test_render_html_missing_image_path(tmp_path: Path) -> None:
+def test_render_pdf_missing_image_path(tmp_path: Path) -> None:
     """Missing image file: image_data is empty string (no crash)."""
     participants = [
         {
@@ -49,14 +53,15 @@ def test_render_html_missing_image_path(tmp_path: Path) -> None:
             "image_path": str(tmp_path / "nonexistent.png"),
         },
     ]
-    out = tmp_path / "out.html"
-    render_html(participants, out)
-    assert out.exists()
-    content = out.read_text(encoding="utf-8")
-    assert "NoPic" in content
+    html = _build_html(participants)
+    assert "NoPic" in html
+
+    out = tmp_path / "out.pdf"
+    render_pdf(participants, out)
+    _assert_pdf(out)
 
 
-def test_render_html_optional_fields(tmp_path: Path, placeholder_path: Path) -> None:
+def test_render_pdf_optional_fields(tmp_path: Path, placeholder_path: Path) -> None:
     """Participant with email, phone, vorname, nachname: all appear when set."""
     participants = [
         {
@@ -70,17 +75,19 @@ def test_render_html_optional_fields(tmp_path: Path, placeholder_path: Path) -> 
             "image_path": str(placeholder_path),
         },
     ]
-    out = tmp_path / "out.html"
-    render_html(participants, out)
-    content = out.read_text(encoding="utf-8")
-    assert "a@b.at" in content
-    assert "+43 1" in content
-    assert "Anna" in content
-    assert "Z" in content
-    assert "yes" in content
+    html = _build_html(participants)
+    assert "a@b.at" in html
+    assert "+43 1" in html
+    assert "Anna" in html
+    assert "Z" in html
+    assert "yes" in html
+
+    out = tmp_path / "out.pdf"
+    render_pdf(participants, out)
+    _assert_pdf(out)
 
 
-def test_render_html_escapes_content(tmp_path: Path, placeholder_path: Path) -> None:
+def test_build_html_escapes_content(tmp_path: Path, placeholder_path: Path) -> None:
     """HTML-unsafe content in participant is escaped."""
     participants = [
         {
@@ -90,15 +97,13 @@ def test_render_html_escapes_content(tmp_path: Path, placeholder_path: Path) -> 
             "image_path": str(placeholder_path),
         },
     ]
-    out = tmp_path / "out.html"
-    render_html(participants, out)
-    content = out.read_text(encoding="utf-8")
+    content = _build_html(participants)
     assert "&lt;script&gt;" in content or "<script>" not in content
     assert "&amp;" in content
 
 
 def test_image_to_data_url_exif_orientation(tmp_path: Path) -> None:
-    """EXIF orientation 6 (rotate 90 CW) is applied before thumbnailing."""
+    """EXIF orientation 6 is applied before cover-cropping to a square."""
     src = tmp_path / "exif.jpg"
     img = Image.new("RGB", (200, 100), color=(0, 0, 255))
     # Pillow writes Orientation via exif; tag 274 = Orientation
@@ -106,40 +111,35 @@ def test_image_to_data_url_exif_orientation(tmp_path: Path) -> None:
     exif[274] = 6  # Rotate 90 CW → tall image
     img.save(src, format="JPEG", exif=exif)
 
-    data_url = _image_to_data_url(src, rotation=0)
+    data_url = _image_to_data_url(src)
     assert data_url.startswith("data:image/png;base64,")
     raw = base64.b64decode(data_url.split(",", 1)[1])
     with Image.open(io.BytesIO(raw)) as thumb:
-        assert thumb.height >= thumb.width
+        assert thumb.size == (144, 144)
 
 
-def test_image_to_data_url_rotation(tmp_path: Path) -> None:
-    """Manual rotation swaps width and height before thumbnailing."""
+def test_image_to_data_url_cover_crops_square(tmp_path: Path) -> None:
+    """Non-square images are cover-cropped to a fixed square (object-fit: cover)."""
     src = tmp_path / "wide.png"
-    Image.new("RGB", (200, 100), color=(255, 0, 0)).save(src)
+    # Left third red, rest green — after center cover-crop, result should be mostly green
+    img = Image.new("RGB", (300, 100), color=(0, 255, 0))
+    for x in range(100):
+        for y in range(100):
+            img.putpixel((x, y), (255, 0, 0))
+    img.save(src)
 
-    data_url = _image_to_data_url(src, rotation=90)
-    assert data_url.startswith("data:image/png;base64,")
+    data_url = _image_to_data_url(src)
     raw = base64.b64decode(data_url.split(",", 1)[1])
     with Image.open(io.BytesIO(raw)) as thumb:
-        assert thumb.width < thumb.height
+        assert thumb.size == (144, 144)
+        # Center pixel should come from the green region, not the red left strip
+        assert thumb.getpixel((72, 72)) == (0, 255, 0)
 
 
-def test_render_html_applies_image_rotation(tmp_path: Path) -> None:
-    """render_html passes image_rotation through to thumbnail generation."""
-    src = tmp_path / "wide.png"
-    Image.new("RGB", (200, 100), color=(0, 255, 0)).save(src)
-    participants = [
-        {
-            "land": "DE",
-            "rufname": "Rotated",
-            "couch": "",
-            "image_path": str(src),
-            "image_rotation": 90,
-        },
-    ]
-    out = tmp_path / "out.html"
-    render_html(participants, out)
-    content = out.read_text(encoding="utf-8")
-    assert "Rotated" in content
-    assert "data:image/png;base64," in content
+def test_build_html_meetup_name_title(tmp_path: Path, placeholder_path: Path) -> None:
+    """meetup_name is used as title; empty falls back to default."""
+    html_default = _build_html([])
+    assert "Teilnehmendenkontaktliste" in html_default
+
+    html_named = _build_html([], meetup_name="PAN Testtreffen")
+    assert "PAN Testtreffen" in html_named

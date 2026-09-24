@@ -1,7 +1,7 @@
 [project]
 name = "pan-kontaktliste"
 version = "0.6.0"
-description = "HTML contact list from PAN meetup SeaTable sign-up data"
+description = "PDF contact list from PAN meetup SeaTable sign-up data"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "GPL-3.0-or-later" }
