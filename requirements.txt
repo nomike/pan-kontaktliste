@@ -1,10 +1,11 @@
-# Excel reading
-openpyxl>=3.1.0
+# SeaTable API client
+seatable-api>=4.0.0
+requests>=2.31.0
 
-# LaTeX template rendering
+# HTML template rendering
 Jinja2>=3.1.0
 
-# Image extraction from Excel (required by openpyxl for reading embedded images)
+# Image thumbnails / EXIF orientation
 Pillow>=10.0.0
 
 # GUI (native look on Windows, macOS, Linux)

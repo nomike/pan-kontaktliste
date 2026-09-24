@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-from PIL import Image
+from PIL import Image, ImageOps
 
 _THUMBNAIL_SIZE = (144, 144)  # 2x display size (72px CSS) for retina
 
@@ -22,12 +22,15 @@ def _base_path() -> Path:
 
 
 def _image_to_data_url(image_path: str | Path, rotation: int = 0) -> str:
-    """Resize image to thumbnail and return a PNG data URL."""
+    """Apply EXIF orientation, optional rotation, thumbnail; return a PNG data URL."""
     path = Path(image_path)
     if not path.exists():
         return ""
     try:
-        with Image.open(path) as img:
+        with Image.open(path) as opened:
+            img = ImageOps.exif_transpose(opened) or opened
+            # Copy so we can safely use after context exit / after rotate
+            img = img.copy()
             if rotation % 360:
                 img = img.rotate(rotation, expand=True)
             img.thumbnail(_THUMBNAIL_SIZE, Image.LANCZOS)
