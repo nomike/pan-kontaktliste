@@ -212,6 +212,53 @@ def _row(**overrides: object) -> dict:
     return base
 
 
+def test_failed_png_download_keeps_intact_placeholder(
+    tmp_path: Path, placeholder_path: Path
+) -> None:
+    """A failed .png download must not leave a truncated file as the participant image."""
+    base = MagicMock()
+    base.get_metadata.return_value = {
+        "tables": [{"name": "T", "columns": [{"name": CONSENT_LIST}]}]
+    }
+    base.list_views.return_value = []
+    base.list_rows.return_value = [
+        _row(
+            **{
+                CONSENT_BILD: True,
+                DATA_BILD: [
+                    "https://cloud.seatable.io/workspace/1/asset/"
+                    "11111111-1111-1111-1111-111111111111/images/2026-01/photo.png"
+                ],
+                DATA_RUFNAME: "Broken",
+            }
+        ),
+    ]
+    base.dtable_uuid = "11111111-1111-1111-1111-111111111111"
+
+    def empty_download(url: str, save_path: str) -> None:
+        # Simulate a failed transfer that creates an empty/truncated file.
+        Path(save_path).write_bytes(b"")
+
+    base.download_file.side_effect = empty_download
+    base.get_file_download_link.side_effect = Exception("no link")
+
+    account = MagicMock()
+    account.get_base.return_value = base
+    session = SeaTableSession(account=account, server_url="https://cloud.seatable.io")
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    result = load_participants(
+        session, 1, "Base", placeholder_path, image_output_dir=out_dir
+    )
+    assert len(result) == 1
+    image = Path(result[0]["image_path"])
+    assert image.is_file()
+    assert image.read_bytes() == placeholder_path.read_bytes()
+    assert image.stat().st_size > 0
+    assert not (out_dir / "teilnehmer_0.png.partial").exists()
+
+
 def test_load_participants_consent_and_partial_fields(
     tmp_path: Path, placeholder_path: Path
 ) -> None:

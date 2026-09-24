@@ -309,27 +309,44 @@ def _asset_path_from_url(url: str) -> str | None:
 
 
 def _download_image(base, url: str, dest: Path) -> bool:
-    """Download one SeaTable image URL to dest. Returns True on success."""
-    try:
-        base.download_file(url, str(dest))
-        return dest.is_file() and dest.stat().st_size > 0
-    except Exception:
-        pass
+    """
+    Download one SeaTable image URL to dest.
 
-    path = _asset_path_from_url(url)
-    if not path:
-        return False
+    Writes via a sibling ``.partial`` file and only replaces ``dest`` on success,
+    so a failed download cannot truncate an existing placeholder at the same path.
+    """
+    partial = dest.with_name(dest.name + ".partial")
     try:
+        try:
+            base.download_file(url, str(partial))
+            if partial.is_file() and partial.stat().st_size > 0:
+                partial.replace(dest)
+                return True
+        except Exception:
+            pass
+
+        path = _asset_path_from_url(url)
+        if not path:
+            return False
         link = base.get_file_download_link(path)
         if not link:
             return False
         resp = requests.get(link, timeout=DOWNLOAD_TIMEOUT_S)
         if resp.status_code != 200 or not resp.content:
             return False
-        dest.write_bytes(resp.content)
+        partial.write_bytes(resp.content)
+        if partial.stat().st_size <= 0:
+            return False
+        partial.replace(dest)
         return True
     except Exception:
         return False
+    finally:
+        try:
+            if partial.exists():
+                partial.unlink()
+        except OSError:
+            pass
 
 
 def _use_placeholder(placeholder_path: Path, image_output_dir: Path, index: int) -> str:
@@ -420,7 +437,7 @@ def load_participants(
         rufname = _str(row.get(DATA_RUFNAME))
         idx = len(participants)
 
-        image_path = _use_placeholder(placeholder_path, image_output_dir, idx)
+        image_path: str | None = None
         if bild_ok:
             urls = _image_urls_from_cell(row.get(DATA_BILD))
             if urls:
@@ -436,6 +453,9 @@ def load_participants(
                 dest = image_output_dir / f"teilnehmer_{idx}{ext}"
                 if _download_image(base, urls[0], dest):
                     image_path = str(dest)
+
+        if image_path is None:
+            image_path = _use_placeholder(placeholder_path, image_output_dir, idx)
 
         p: dict[str, Any] = {
             "land": _str(row.get(DATA_LAND)),
