@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.5.0](https://github.com/nomike/pan-kontaktliste/compare/v0.4.0...v0.5.0) (2026-09-24)
+
+
+### Features
+
+* add renovate.json ([#19](https://github.com/nomike/pan-kontaktliste/issues/19)) ([a1895f4](https://github.com/nomike/pan-kontaktliste/commit/a1895f4abac3b64753ea496670e6652bf8e482af))
+* load contact list directly from SeaTable ([#17](https://github.com/nomike/pan-kontaktliste/issues/17)) ([835b62b](https://github.com/nomike/pan-kontaktliste/commit/835b62bfa6686c78f244083c13e6636fdfdfc68d))
+
 ## [0.4.0](https://github.com/nomike/pan-kontaktliste/compare/v0.3.2...v0.4.0) (2026-06-07)
 
 
