@@ -2,77 +2,117 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% if meetup_name %}{{ meetup_name }}{% else %}Teilnehmendenkontaktliste{% endif %}</title>
   <style>
-    * { box-sizing: border-box; }
+    @page {
+      size: A4;
+      margin: 1.2cm;
+    }
     body {
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      font-family: Helvetica, Arial, sans-serif;
       font-size: 11pt;
       line-height: 1.4;
       margin: 0;
-      padding: 1.2rem;
+      padding: 0;
       color: #1a1a1a;
     }
     h1 {
-      font-size: 1.4rem;
-      margin: 0 0 0.8rem 0;
-      font-weight: 600;
+      font-size: 16pt;
+      margin: 0 0 10pt 0;
+      font-weight: bold;
     }
-    .columns {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.8rem 1.2rem;
+    table.columns {
+      width: 100%;
     }
-    @media print {
-      body { padding: 0.8rem; }
-      .columns { gap: 0.5rem 1rem; }
+    td.card-cell {
+      width: 48%;
+      vertical-align: top;
+      border: 1px solid #404040;
+      padding: 6pt 7pt;
     }
-    .card {
-      display: flex;
-      align-items: flex-start;
-      gap: 0.5rem;
-      border: 1px solid rgba(0,0,0,0.25);
-      border-radius: 6px;
-      padding: 0.5rem 0.6rem;
-      break-inside: avoid;
-      page-break-inside: avoid;
+    td.card-cell-empty {
+      width: 48%;
+      border: none;
+      padding: 0;
     }
-    .card-photo {
-      flex-shrink: 0;
+    td.col-gap {
+      width: 4%;
+      border: none;
+      padding: 0;
+    }
+    tr.row-gap td {
+      height: 8pt;
+      border: none;
+      padding: 0;
+      font-size: 1pt;
+      line-height: 1pt;
+    }
+    table.card-inner {
+      width: 100%;
+    }
+    td.card-photo-cell {
+      width: 72px;
+      vertical-align: top;
+      padding: 0 5pt 0 0;
+    }
+    td.card-body-cell {
+      vertical-align: top;
+      padding: 0;
+    }
+    img.card-photo {
       width: 72px;
       height: 72px;
-      object-fit: cover;
-      border-radius: 4px;
-    }
-    .card-body {
-      min-width: 0;
     }
     .card-body p {
-      margin: 0.15rem 0;
-      font-size: 0.95rem;
+      margin: 2pt 0;
+      font-size: 10pt;
     }
     .card-body .label {
-      font-weight: 600;
+      font-weight: bold;
       color: #333;
     }
   </style>
 </head>
 <body>
   <h1>{% if meetup_name %}{{ meetup_name }}{% else %}Teilnehmendenkontaktliste{% endif %}</h1>
-  <div class="columns">
+  <table class="columns">
     {% for p in participants %}
-    <div class="card">
-      <img class="card-photo" src="{{ p.image_data }}" alt="" width="72" height="72">
-      <div class="card-body">
-        <p><span class="label">Name:</span> {{ [p.vorname if (p.vorname is defined and p.vorname) else none, p.rufname if p.rufname else none, p.nachname if (p.nachname is defined and p.nachname) else none] | select | join(' ') }}</p>
-        <p><span class="label">Ort:</span> {{ p.land }}{% if p.plz %}, {{ p.plz }}{% endif %}{% if p.ort %} {{ p.ort }}{% endif %}</p>
-        {% if p.couch %}<p><span class="label">Couch:</span> {{ p.couch }}</p>{% endif %}
-        {% if p.email is defined and p.email %}<p><span class="label">E-Mail:</span> <a href="mailto:{{ p.email }}">{{ p.email }}</a></p>{% endif %}
-        {% if p.phone is defined and p.phone %}<p><span class="label">Telefon:</span> <a href="tel:{{ p.phone }}">{{ p.phone }}</a></p>{% endif %}
-      </div>
-    </div>
+      {% if loop.index0 % 2 == 0 %}
+      <tr>
+      {% endif %}
+        <td class="card-cell">
+          <table class="card-inner">
+            <tr>
+              <td class="card-photo-cell">
+                {% if p.image_data %}
+                <img class="card-photo" src="{{ p.image_data }}" alt="" width="72" height="72">
+                {% endif %}
+              </td>
+              <td class="card-body-cell">
+                <div class="card-body">
+                  <p><span class="label">Name:</span> {{ [p.vorname if (p.vorname is defined and p.vorname) else none, p.rufname if p.rufname else none, p.nachname if (p.nachname is defined and p.nachname) else none] | select | join(' ') }}</p>
+                  <p><span class="label">Ort:</span> {{ p.land }}{% if p.plz %}, {{ p.plz }}{% endif %}{% if p.ort %} {{ p.ort }}{% endif %}</p>
+                  {% if p.couch %}<p><span class="label">Couch:</span> {{ p.couch }}</p>{% endif %}
+                  {% if p.email is defined and p.email %}<p><span class="label">E-Mail:</span> <a href="mailto:{{ p.email }}">{{ p.email }}</a></p>{% endif %}
+                  {% if p.phone is defined and p.phone %}<p><span class="label">Telefon:</span> <a href="tel:{{ p.phone }}">{{ p.phone }}</a></p>{% endif %}
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      {% if loop.index0 % 2 == 0 %}
+        <td class="col-gap">&nbsp;</td>
+      {% endif %}
+      {% if loop.index0 % 2 == 1 or loop.last %}
+        {% if loop.index0 % 2 == 0 %}
+        <td class="card-cell-empty"></td>
+        {% endif %}
+      </tr>
+        {% if not loop.last %}
+      <tr class="row-gap"><td colspan="3">&nbsp;</td></tr>
+        {% endif %}
+      {% endif %}
     {% endfor %}
-  </div>
+  </table>
 </body>
 </html>

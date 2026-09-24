@@ -5,6 +5,9 @@ requests>=2.31.0
 # HTML template rendering
 Jinja2>=3.1.0
 
+# HTML → PDF
+xhtml2pdf>=0.2.16
+
 # Image thumbnails / EXIF orientation
 Pillow>=10.0.0
 

@@ -1,13 +1,12 @@
 # PAN Kontaktliste
 
-Dieses Programm erstellt aus einer **SeaTable**-Anmeldeliste (PAN-Treffen) eine **Kontaktliste** für Teilnehmerinnen und Teilnehmer. Die Ausgabe ist eine **HTML-Datei**, die in jedem Webbrowser geöffnet werden kann. Eine PDF lässt sich direkt im Browser erzeugen (Drucken → Als PDF speichern). Es sind keine zusätzlichen Installationen wie LaTeX nötig – unter Windows, Linux und macOS reicht Python und ein Browser.
+Dieses Programm erstellt aus einer **SeaTable**-Anmeldeliste (PAN-Treffen) eine **Kontaktliste** für Teilnehmerinnen und Teilnehmer. Die Ausgabe ist eine **PDF-Datei**. Es sind keine zusätzlichen Installationen wie LaTeX nötig – unter Windows, Linux und macOS reicht Python.
 
 Es werden die Einwilligungen aus dem Anmeldeformular berücksichtigt: Nur wer der Teilnehmyliste zugestimmt hat, erscheint in der Liste; E-Mail, Telefon, Nachname, Vorname und Bild werden nur angezeigt, wenn die jeweilige Option gewählt wurde. Fehlt die Einwilligung für ein Bild, wird ein Platzhalterbild verwendet.
 
 ## Anforderungen
 
 - **Python 3.10+**
-- Ein **Webbrowser** (zum Anzeigen der HTML-Liste und zum Erzeugen einer PDF per Drucken → Als PDF speichern)
 - Ein **SeaTable-Cloud**-Konto mit Zugriff auf die Anmelde-Bases (z. B. [cloud.seatable.io](https://cloud.seatable.io/))
 
 ## Installation
@@ -36,10 +35,8 @@ python gui.py
 
 1. Beim Start erscheinen **E-Mail/Benutzername** und **Passwort** für SeaTable. Die Zugangsdaten bleiben nur im Arbeitsspeicher und werden **nicht** gespeichert.
 2. Nach der Anmeldung erscheint die Liste aller sichtbaren **Bases** (jedes Treffen ist eine eigene Base). Mit dem Filterfeld lässt sich die Liste eingrenzen.
-3. Base auswählen, optional den **Namen des Treffens** anpassen, Zielpfad für die HTML-Datei wählen.
-4. **Kontaktliste erstellen** lädt die Zeilen und Bilder per SeaTable-API und erzeugt die HTML-Datei.
-
-Zum Erzeugen einer PDF: HTML im Browser öffnen → Menü Drucken (oder Strg+P) → „Als PDF speichern“ bzw. „Save as PDF“ wählen.
+3. Base auswählen, optional den **Namen des Treffens** anpassen, Zielpfad für die PDF-Datei wählen.
+4. **Kontaktliste erstellen** lädt die Zeilen und Bilder per SeaTable-API und erzeugt die PDF-Datei.
 
 ### Ablauf im Programm
 
@@ -47,7 +44,7 @@ Zum Erzeugen einer PDF: HTML im Browser öffnen → Menü Drucken (oder Strg+P) 
 2. Pro Teilnehmer/in werden immer **Land**, **Rufname/Pseudonym** und **Teilnehmyliste_Couch** in die Liste übernommen.
 3. **E-Mail**, **Telefonnummer**, **Nachname**, **Vorname** und **Bild** erscheinen nur, wenn die jeweilige Einwilligung gesetzt ist.
 4. Bilder werden authentifiziert von SeaTable heruntergeladen; die EXIF-Ausrichtung wird automatisch korrigiert. Fehlt die Einwilligung oder kein Bild, wird `data/placeholder.png` verwendet.
-5. Die Liste wird als eine einzige HTML-Datei mit eingebetteten Bildern (Data-URLs) erzeugt.
+5. Die Liste wird als PDF mit eingebetteten Bildern erzeugt.
 
 ### Hinweis zum Free-Tarif
 
@@ -68,9 +65,9 @@ pytest
 
 ## Projektstruktur
 
-- `gui.py` – grafische Oberfläche (Login, Base-Auswahl, HTML-Ausgabe)
+- `gui.py` – grafische Oberfläche (Login, Base-Auswahl, PDF-Ausgabe)
 - `seatable_reader.py` – SeaTable-Login, Base-Liste, Zeilen und Bilder laden
-- `render.py` – Jinja2-Rendering der HTML-Vorlage (Bilder als Data-URLs)
+- `render.py` – Jinja2-Rendering und PDF-Erzeugung via xhtml2pdf (Bilder als Data-URLs)
 - `template/contact_list.html.j2` – HTML-Vorlage (Jinja2) für die Kontaktliste
 - `data/placeholder.png` – Platzhalterbild, wenn kein Bild oder keine Einwilligung
 - `data/app-icon.png` / `data/app-icon.ico` – Programm-Icon (Favicon von [polyamory.de](https://polyamory.de/))

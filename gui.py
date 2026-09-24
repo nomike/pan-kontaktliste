@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-GUI for PAN Kontaktliste: log in to SeaTable, pick a meetup base, generate HTML.
+GUI for PAN Kontaktliste: log in to SeaTable, pick a meetup base, generate PDF.
 Uses wxPython for a native look on Windows, macOS, and Linux.
 Credentials are kept in memory only for the lifetime of the process.
 """
@@ -10,13 +10,12 @@ import shutil
 import sys
 import tempfile
 import threading
-import webbrowser
 from pathlib import Path
 
 import wx
 import wx.adv
 
-from render import render_html
+from render import render_pdf
 from seatable_reader import (
     DEFAULT_SERVER_URL,
     BaseInfo,
@@ -235,24 +234,18 @@ class MainFrame(wx.Frame):
         row_meetup.Add(self.meetup_name, 1, wx.EXPAND)
         sizer.Add(row_meetup, 0, wx.EXPAND | wx.ALL, 6)
 
-        # HTML row
+        # PDF row
         row2 = wx.BoxSizer(wx.HORIZONTAL)
-        lbl_html = wx.StaticText(panel, label="HTML-Datei speichern unter:")
-        w = lbl_html.GetTextExtent("HTML-Datei speichern unter:")[0]
-        lbl_html.SetMinSize((max(w, 220) + 8, -1))
-        row2.Add(lbl_html, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        self.html_path = wx.TextCtrl(panel, value="", size=(320, -1))
-        row2.Add(self.html_path, 1, wx.EXPAND | wx.RIGHT, 6)
-        btn_html = wx.Button(panel, label="Durchsuchen ...")
-        btn_html.Bind(wx.EVT_BUTTON, self._on_choose_html)
-        row2.Add(btn_html, 0)
+        lbl_pdf = wx.StaticText(panel, label="PDF-Datei speichern unter:")
+        w = lbl_pdf.GetTextExtent("PDF-Datei speichern unter:")[0]
+        lbl_pdf.SetMinSize((max(w, 220) + 8, -1))
+        row2.Add(lbl_pdf, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.pdf_path = wx.TextCtrl(panel, value="", size=(320, -1))
+        row2.Add(self.pdf_path, 1, wx.EXPAND | wx.RIGHT, 6)
+        btn_pdf = wx.Button(panel, label="Durchsuchen ...")
+        btn_pdf.Bind(wx.EVT_BUTTON, self._on_choose_pdf)
+        row2.Add(btn_pdf, 0)
         sizer.Add(row2, 0, wx.EXPAND | wx.ALL, 6)
-
-        self.open_browser_cb = wx.CheckBox(
-            panel, label="HTML nach dem Erstellen im Browser öffnen"
-        )
-        self.open_browser_cb.SetValue(True)
-        sizer.Add(self.open_browser_cb, 0, wx.LEFT | wx.TOP, 8)
 
         self.create_btn = wx.Button(panel, label="Kontaktliste erstellen")
         self.create_btn.Bind(wx.EVT_BUTTON, self._on_create_list)
@@ -292,7 +285,7 @@ class MainFrame(wx.Frame):
         info.SetName("PAN Kontaktliste")
         info.SetVersion(get_version())
         info.SetDescription(
-            "Erstellt aus einer SeaTable-Anmeldeliste eine HTML-Kontaktliste für "
+            "Erstellt aus einer SeaTable-Anmeldeliste eine PDF-Kontaktliste für "
             "Teilnehmerinnen und Teilnehmer (einwilligungsbasiert). Lizenz: GPL-3.0-or-later."
         )
         info.SetLicense(
@@ -302,19 +295,19 @@ class MainFrame(wx.Frame):
         info.SetWebSite("https://github.com/nomike/pan-kontaktliste")
         wx.adv.AboutBox(info)
 
-    def _on_choose_html(self, _event: wx.CommandEvent) -> None:
+    def _on_choose_pdf(self, _event: wx.CommandEvent) -> None:
         with wx.FileDialog(
             self,
-            "HTML-Datei speichern unter",
+            "PDF-Datei speichern unter",
             defaultFile="",
-            wildcard="HTML-Dateien (*.html)|*.html|Alle Dateien (*.*)|*.*",
+            wildcard="PDF-Dateien (*.pdf)|*.pdf|Alle Dateien (*.*)|*.*",
             style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
         ) as dlg:
             if dlg.ShowModal() == wx.ID_OK:
                 path = dlg.GetPath()
-                if not path.endswith(".html"):
-                    path += ".html"
-                self.html_path.SetValue(path)
+                if not path.lower().endswith(".pdf"):
+                    path += ".pdf"
+                self.pdf_path.SetValue(path)
 
     def _on_refresh_bases(self, _event: wx.CommandEvent) -> None:
         self._load_bases()
@@ -366,7 +359,7 @@ class MainFrame(wx.Frame):
         if self._busy:
             return
         base = self._selected_base()
-        html = self.html_path.GetValue().strip()
+        pdf = self.pdf_path.GetValue().strip()
         if base is None:
             wx.MessageBox(
                 "Bitte wählen Sie ein Treffen (SeaTable-Base).",
@@ -374,9 +367,9 @@ class MainFrame(wx.Frame):
                 wx.OK | wx.ICON_WARNING,
             )
             return
-        if not html:
+        if not pdf:
             wx.MessageBox(
-                "Bitte wählen Sie einen Speicherort für die HTML-Datei.",
+                "Bitte wählen Sie einen Speicherort für die PDF-Datei.",
                 "Eingabe fehlt",
                 wx.OK | wx.ICON_WARNING,
             )
@@ -392,8 +385,7 @@ class MainFrame(wx.Frame):
             return
 
         meetup_name = self.meetup_name.GetValue().strip() or base.name
-        open_browser = self.open_browser_cb.GetValue()
-        html_path = Path(html)
+        pdf_path = Path(pdf)
 
         self._busy = True
         self.create_btn.Disable()
@@ -417,21 +409,20 @@ class MainFrame(wx.Frame):
                 if progress_dlg.cancel_event.is_set():
                     raise SeaTableCancelled("Abgebrochen.")
                 if not participants:
-                    wx.CallAfter(self._on_create_done, progress_dlg, None, None, False)
+                    wx.CallAfter(self._on_create_done, progress_dlg, None, None)
                     return
-                on_progress("HTML wird erzeugt …", 0, 0)
-                render_html(participants, html_path, meetup_name=meetup_name)
+                on_progress("PDF wird erzeugt …", 0, 0)
+                render_pdf(participants, pdf_path, meetup_name=meetup_name)
                 wx.CallAfter(
                     self._on_create_done,
                     progress_dlg,
-                    str(html_path),
+                    str(pdf_path),
                     None,
-                    open_browser,
                 )
             except SeaTableCancelled as e:
-                wx.CallAfter(self._on_create_done, progress_dlg, None, e, False)
+                wx.CallAfter(self._on_create_done, progress_dlg, None, e)
             except Exception as e:
-                wx.CallAfter(self._on_create_done, progress_dlg, None, e, False)
+                wx.CallAfter(self._on_create_done, progress_dlg, None, e)
             finally:
                 shutil.rmtree(build_dir, ignore_errors=True)
 
@@ -442,12 +433,11 @@ class MainFrame(wx.Frame):
     def _on_create_done(
         self,
         progress_dlg: ProgressDialog,
-        html: str | None,
+        pdf: str | None,
         error: BaseException | None,
-        open_browser: bool,
     ) -> None:
         if progress_dlg.IsModal():
-            progress_dlg.EndModal(wx.ID_CANCEL if error or html is None else wx.ID_OK)
+            progress_dlg.EndModal(wx.ID_CANCEL if error or pdf is None else wx.ID_OK)
         self._busy = False
         self.create_btn.Enable()
 
@@ -458,7 +448,7 @@ class MainFrame(wx.Frame):
             title = "SeaTable-Fehler" if isinstance(error, (SeaTableError, SeaTableAuthError)) else "Fehler"
             wx.MessageBox(str(error), title, wx.OK | wx.ICON_ERROR)
             return
-        if html is None:
+        if pdf is None:
             wx.MessageBox(
                 "In der Base sind keine Einträge mit aktivierter Teilnehmyliste.",
                 "Keine Teilnehmer",
@@ -466,14 +456,11 @@ class MainFrame(wx.Frame):
             )
             return
 
-        msg = f"Die Kontaktliste wurde erstellt:\n{html}"
-        if open_browser:
-            webbrowser.open(f"file://{Path(html).resolve()}")
-            msg += (
-                "\n\nDie Liste wurde im Browser geöffnet. "
-                "Zum Erzeugen einer PDF: Drucken → Als PDF speichern."
-            )
-        wx.MessageBox(msg, "Fertig", wx.OK | wx.ICON_INFORMATION)
+        wx.MessageBox(
+            f"Die Kontaktliste wurde erstellt:\n{pdf}",
+            "Fertig",
+            wx.OK | wx.ICON_INFORMATION,
+        )
 
 
 def _prompt_login() -> SeaTableSession | None:
