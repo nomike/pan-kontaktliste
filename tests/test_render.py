@@ -103,7 +103,7 @@ def test_build_html_escapes_content(tmp_path: Path, placeholder_path: Path) -> N
 
 
 def test_image_to_data_url_exif_orientation(tmp_path: Path) -> None:
-    """EXIF orientation 6 (rotate 90 CW) is applied before thumbnailing."""
+    """EXIF orientation 6 is applied before cover-cropping to a square."""
     src = tmp_path / "exif.jpg"
     img = Image.new("RGB", (200, 100), color=(0, 0, 255))
     # Pillow writes Orientation via exif; tag 274 = Orientation
@@ -115,7 +115,25 @@ def test_image_to_data_url_exif_orientation(tmp_path: Path) -> None:
     assert data_url.startswith("data:image/png;base64,")
     raw = base64.b64decode(data_url.split(",", 1)[1])
     with Image.open(io.BytesIO(raw)) as thumb:
-        assert thumb.height >= thumb.width
+        assert thumb.size == (144, 144)
+
+
+def test_image_to_data_url_cover_crops_square(tmp_path: Path) -> None:
+    """Non-square images are cover-cropped to a fixed square (object-fit: cover)."""
+    src = tmp_path / "wide.png"
+    # Left third red, rest green — after center cover-crop, result should be mostly green
+    img = Image.new("RGB", (300, 100), color=(0, 255, 0))
+    for x in range(100):
+        for y in range(100):
+            img.putpixel((x, y), (255, 0, 0))
+    img.save(src)
+
+    data_url = _image_to_data_url(src)
+    raw = base64.b64decode(data_url.split(",", 1)[1])
+    with Image.open(io.BytesIO(raw)) as thumb:
+        assert thumb.size == (144, 144)
+        # Center pixel should come from the green region, not the red left strip
+        assert thumb.getpixel((72, 72)) == (0, 255, 0)
 
 
 def test_build_html_meetup_name_title(tmp_path: Path, placeholder_path: Path) -> None:

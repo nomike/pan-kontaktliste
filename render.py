@@ -23,7 +23,7 @@ def _base_path() -> Path:
 
 
 def _image_to_data_url(image_path: str | Path) -> str:
-    """Apply EXIF orientation, thumbnail; return a PNG data URL."""
+    """Apply EXIF orientation, cover-crop to a square thumbnail; return a PNG data URL."""
     path = Path(image_path)
     if not path.exists():
         return ""
@@ -32,7 +32,8 @@ def _image_to_data_url(image_path: str | Path) -> str:
             img = ImageOps.exif_transpose(opened) or opened
             # Copy so we can safely use after context exit
             img = img.copy()
-            img.thumbnail(_THUMBNAIL_SIZE, Image.LANCZOS)
+            # Match former CSS object-fit: cover (xhtml2pdf has no equivalent)
+            img = ImageOps.fit(img, _THUMBNAIL_SIZE, method=Image.LANCZOS)
             buf = io.BytesIO()
             img.save(buf, format="PNG", optimize=True)
             b64 = base64.b64encode(buf.getvalue()).decode("ascii")
