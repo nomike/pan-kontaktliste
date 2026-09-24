@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.6.0](https://github.com/nomike/pan-kontaktliste/compare/v0.5.0...v0.6.0) (2026-09-24)
+
+
+### Features
+
+* use polyamory.de favicon as the application icon ([#28](https://github.com/nomike/pan-kontaktliste/issues/28)) ([04fe93c](https://github.com/nomike/pan-kontaktliste/commit/04fe93c7342e61283dc297b8d85f1f02da913075))
+
 ## [0.5.0](https://github.com/nomike/pan-kontaktliste/compare/v0.4.0...v0.5.0) (2026-09-24)
 
 
