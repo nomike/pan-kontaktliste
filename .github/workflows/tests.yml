@@ -23,7 +23,7 @@ jobs:
       - name: Install Python dependencies (no wxPython; tests do not need GUI)
         run: |
           python3 -m pip install --upgrade pip --break-system-packages
-          python3 -m pip install seatable-api requests Jinja2 Pillow pytest --break-system-packages
+          python3 -m pip install seatable-api requests Jinja2 Pillow xhtml2pdf pytest --break-system-packages
 
       - name: Run tests
         run: python3 -m pytest tests/ -v
