@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.7.1](https://github.com/nomike/pan-kontaktliste/compare/v0.7.0...v0.7.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **ci:** bundle reportlab barcode modules in Windows exe ([#32](https://github.com/nomike/pan-kontaktliste/issues/32)) ([8ef0a39](https://github.com/nomike/pan-kontaktliste/commit/8ef0a39e42540be2afedf6ba1427c5054c23d52f))
+
 ## [0.7.0](https://github.com/nomike/pan-kontaktliste/compare/v0.6.0...v0.7.0) (2026-09-24)
 
 
