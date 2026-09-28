@@ -33,6 +33,7 @@ jobs:
             --add-data "data/app-icon.png;data" ^
             --add-data "template;template" ^
             --add-data "pyproject.toml;." ^
+            --collect-submodules reportlab.graphics.barcode ^
             gui.py
 
       - name: Create zip
