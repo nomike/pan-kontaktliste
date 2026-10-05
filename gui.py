@@ -196,6 +196,8 @@ class MainFrame(wx.Frame):
         self._filtered: list[BaseInfo] = []
         self._app_icon = None
         self._busy = False
+        self._view_load_seq = 0
+        self._view_load_busy = False
         self._set_icon()
 
         self._panel = wx.Panel(self)
@@ -365,7 +367,18 @@ class MainFrame(wx.Frame):
             return None
         return self._filtered[idx]
 
+    def _end_view_load_busy(self) -> None:
+        if not self._view_load_busy:
+            return
+        try:
+            wx.EndBusyCursor()
+        except Exception:
+            pass
+        self._view_load_busy = False
+
     def _clear_views(self) -> None:
+        self._view_load_seq += 1
+        self._end_view_load_busy()
         self._views = []
         self.view_choice.Clear()
         self.view_choice.Disable()
@@ -377,23 +390,51 @@ class MainFrame(wx.Frame):
         return self._views[idx]
 
     def _load_views_for_base(self, base: BaseInfo) -> None:
-        try:
+        self._view_load_seq += 1
+        seq = self._view_load_seq
+        if not self._view_load_busy:
             wx.BeginBusyCursor()
-            self._views = list_view_names(self._session, base.workspace_id, base.name)
-        except SeaTableError as e:
-            wx.MessageBox(str(e), "Fehler", wx.OK | wx.ICON_ERROR)
-            self._clear_views()
-            return
-        except Exception as e:
-            wx.MessageBox(str(e), "Fehler", wx.OK | wx.ICON_ERROR)
-            self._clear_views()
-            return
-        finally:
-            try:
-                wx.EndBusyCursor()
-            except Exception:
-                pass
+            self._view_load_busy = True
+        session = self._session
+        workspace_id = base.workspace_id
+        base_name = base.name
 
+        def worker() -> None:
+            views: list[str] = []
+            error: BaseException | None = None
+            try:
+                views = list_view_names(session, workspace_id, base_name)
+            except Exception as e:
+                error = e
+            wx.CallAfter(self._apply_loaded_views, seq, base, views, error)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_loaded_views(
+        self,
+        seq: int,
+        requested: BaseInfo,
+        views: list[str],
+        error: BaseException | None,
+    ) -> None:
+        if seq != self._view_load_seq:
+            return
+        self._end_view_load_busy()
+        selected = self._selected_base()
+        if (
+            selected is None
+            or selected.workspace_id != requested.workspace_id
+            or selected.name != requested.name
+        ):
+            self._clear_views()
+            return
+        if error is not None:
+            title = "SeaTable-Fehler" if isinstance(error, SeaTableError) else "Fehler"
+            wx.MessageBox(str(error), title, wx.OK | wx.ICON_ERROR)
+            self._clear_views()
+            return
+
+        self._views = views
         self.view_choice.Clear()
         if not self._views:
             self.view_choice.Disable()
