@@ -25,6 +25,7 @@ from seatable_reader import (
     BaseInfo,
     SeaTableAuthError,
     SeaTableCancelled,
+    SeaTableError,
     SeaTableSession,
     _coerce_view_list,
     _image_urls_from_cell,
@@ -336,6 +337,23 @@ def test_load_participants_placeholder_without_image_consent(
     )
     assert len(result) == 1
     assert Path(result[0]["image_path"]).read_bytes() == placeholder_path.read_bytes()
+
+
+def test_load_participants_propagates_view_list_error(
+    tmp_path: Path, placeholder_path: Path
+) -> None:
+    base = MagicMock()
+    base.get_metadata.return_value = {
+        "tables": [{"name": "T", "columns": [{"name": CONSENT_LIST}]}]
+    }
+    base.list_views.side_effect = Exception("views down")
+    account = MagicMock()
+    account.get_base.return_value = base
+    session = SeaTableSession(account=account, server_url="https://cloud.seatable.io")
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    with pytest.raises(SeaTableError, match="views down"):
+        load_participants(session, 1, "Base", placeholder_path, image_output_dir=out_dir)
 
 
 def test_choose_default_view_preferences() -> None:

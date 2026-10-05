@@ -307,10 +307,7 @@ def _view_names_from_base(base, table_name: str) -> list[str]:
 def _pick_view_name(base, table_name: str, view_name: str | None = None) -> str | None:
     if view_name:
         return view_name
-    try:
-        return choose_default_view(_view_names_from_base(base, table_name))
-    except SeaTableError:
-        return None
+    return choose_default_view(_view_names_from_base(base, table_name))
 
 
 def list_view_names(
