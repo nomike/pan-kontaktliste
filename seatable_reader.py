@@ -250,18 +250,78 @@ def _pick_table_name(base, table_name: str | None = None) -> str:
     return str(tables[0]["name"])
 
 
+def choose_default_view(view_names: list[str]) -> str | None:
+    """
+    Prefer exact name "Kontaktliste", then "Default View", else the first view.
+    Matching is case-insensitive.
+    """
+    if not view_names:
+        return None
+    by_lower = {name.casefold(): name for name in view_names if name}
+    for preferred in ("kontaktliste", "default view"):
+        if preferred in by_lower:
+            return by_lower[preferred]
+    return view_names[0]
+
+
+def _coerce_view_list(raw: Any) -> list[Any]:
+    """Normalize SeaTable list_views payloads to a list of view entries.
+
+    The SDK returns a dict ``{"views": [...]}``, not a bare list. Iterating the
+    dict would yield the key name instead of the views.
+    """
+    if raw is None:
+        return []
+    if isinstance(raw, dict):
+        for key in ("views", "view_list", "data"):
+            nested = raw.get(key)
+            if isinstance(nested, list):
+                return nested
+        if _str(raw.get("name")):
+            return [raw]
+        return []
+    if isinstance(raw, (list, tuple)):
+        return list(raw)
+    return []
+
+
+def _view_name_from_entry(view: Any) -> str:
+    if isinstance(view, dict):
+        return _str(view.get("name") or view.get("view_name"))
+    return _str(view)
+
+
+def _view_names_from_base(base, table_name: str) -> list[str]:
+    try:
+        raw = base.list_views(table_name)
+    except Exception as e:
+        raise SeaTableError(str(e) or "Ansichten konnten nicht geladen werden.") from e
+    names: list[str] = []
+    for view in _coerce_view_list(raw):
+        name = _view_name_from_entry(view)
+        if name:
+            names.append(name)
+    return names
+
+
 def _pick_view_name(base, table_name: str, view_name: str | None = None) -> str | None:
     if view_name:
         return view_name
-    try:
-        views = base.list_views(table_name) or []
-    except Exception:
-        return None
-    for view in views:
-        name = _str(view.get("name") if isinstance(view, dict) else view)
-        if "kontaktliste" in name.lower():
-            return name
-    return None
+    return choose_default_view(_view_names_from_base(base, table_name))
+
+
+def list_view_names(
+    session: SeaTableSession,
+    workspace_id: int,
+    base_name: str,
+    table_name: str | None = None,
+) -> list[str]:
+    """
+    List view names for the auto-resolved (or given) table in a base.
+    """
+    base = _open_base(session, workspace_id, base_name)
+    resolved_table = _pick_table_name(base, table_name)
+    return _view_names_from_base(base, resolved_table)
 
 
 def _image_urls_from_cell(value: Any) -> list[str]:

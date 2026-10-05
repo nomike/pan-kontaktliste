@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from render import _build_html, _image_to_data_url, render_pdf
+from render import _build_html, _image_to_data_url, _name_sort_key, render_pdf
 
 
 def _assert_pdf(path: Path) -> None:
@@ -85,6 +85,117 @@ def test_render_pdf_optional_fields(tmp_path: Path, placeholder_path: Path) -> N
     out = tmp_path / "out.pdf"
     render_pdf(participants, out)
     _assert_pdf(out)
+
+
+def test_build_html_omits_rufname_when_equal_to_vorname(
+    tmp_path: Path, placeholder_path: Path
+) -> None:
+    """Identical Vorname/Rufname prints once; different names keep both."""
+    same = [
+        {
+            "land": "DE",
+            "vorname": "Silke",
+            "rufname": "Silke",
+            "nachname": "Berendes",
+            "couch": "",
+            "image_path": str(placeholder_path),
+        },
+    ]
+    html_same = _build_html(same)
+    assert "Silke Silke" not in html_same
+    assert "Silke Berendes" in html_same
+
+    different = [
+        {
+            "land": "DE",
+            "vorname": "Silke",
+            "rufname": "Sille",
+            "nachname": "Berendes",
+            "couch": "",
+            "image_path": str(placeholder_path),
+        },
+    ]
+    html_diff = _build_html(different)
+    assert "Silke Sille Berendes" in html_diff
+
+    sharp_s = [
+        {
+            "land": "DE",
+            "vorname": "Weiß",
+            "rufname": "Weiss",
+            "nachname": "M",
+            "couch": "",
+            "image_path": str(placeholder_path),
+        },
+    ]
+    html_ss = _build_html(sharp_s)
+    assert "Weiß Weiss M" in html_ss
+
+
+def test_build_html_sorts_by_vorname_rufname_nachname(
+    tmp_path: Path, placeholder_path: Path
+) -> None:
+    """Participants are ordered by Vorname, then Rufname, then Nachname."""
+    participants = [
+        {
+            "land": "DE",
+            "vorname": "Zoe",
+            "rufname": "Z",
+            "nachname": "A",
+            "couch": "",
+            "image_path": str(placeholder_path),
+        },
+        {
+            "land": "DE",
+            "vorname": "Anna",
+            "rufname": "B",
+            "nachname": "Z",
+            "couch": "",
+            "image_path": str(placeholder_path),
+        },
+        {
+            "land": "DE",
+            "vorname": "anna",
+            "rufname": "A",
+            "nachname": "M",
+            "couch": "",
+            "image_path": str(placeholder_path),
+        },
+        {
+            "land": "DE",
+            "vorname": "Anna",
+            "rufname": "B",
+            "nachname": "A",
+            "couch": "",
+            "image_path": str(placeholder_path),
+        },
+        {
+            "land": "DE",
+            "rufname": "OnlyRuf",
+            "couch": "",
+            "image_path": str(placeholder_path),
+        },
+    ]
+    html = _build_html(participants)
+    pos_anna_a = html.index("anna A M")
+    pos_anna_b_a = html.index("Anna B A")
+    pos_anna_b_z = html.index("Anna B Z")
+    pos_only = html.index("OnlyRuf")
+    pos_zoe = html.index("Zoe Z A")
+    assert pos_anna_a < pos_anna_b_a < pos_anna_b_z < pos_only < pos_zoe
+
+
+def test_name_sort_uses_printed_name_and_umlauts(placeholder_path: Path) -> None:
+    aenne = {
+        "vorname": "Änne",
+        "rufname": "Änne",
+        "nachname": "Berendes",
+        "image_path": str(placeholder_path),
+    }
+    bernd = {"rufname": "Bernd", "image_path": str(placeholder_path)}
+    zoe = {"rufname": "Zoe", "image_path": str(placeholder_path)}
+    ordered = sorted([zoe, bernd, aenne], key=_name_sort_key)
+    assert [p["rufname"] for p in ordered] == ["Änne", "Bernd", "Zoe"]
 
 
 def test_build_html_escapes_content(tmp_path: Path, placeholder_path: Path) -> None:

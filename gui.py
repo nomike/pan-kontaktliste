@@ -23,7 +23,9 @@ from seatable_reader import (
     SeaTableCancelled,
     SeaTableError,
     SeaTableSession,
+    choose_default_view,
     list_bases,
+    list_view_names,
     load_participants,
     login,
 )
@@ -194,6 +196,8 @@ class MainFrame(wx.Frame):
         self._filtered: list[BaseInfo] = []
         self._app_icon = None
         self._busy = False
+        self._view_load_seq = 0
+        self._view_load_busy = False
         self._set_icon()
 
         self._panel = wx.Panel(self)
@@ -222,6 +226,18 @@ class MainFrame(wx.Frame):
         self.base_list = wx.ListBox(panel, style=wx.LB_SINGLE)
         self.base_list.Bind(wx.EVT_LISTBOX, self._on_base_selected)
         sizer.Add(self.base_list, 1, wx.EXPAND | wx.ALL, 6)
+
+        # View selection (for the auto-resolved table in the selected base)
+        row_view = wx.BoxSizer(wx.HORIZONTAL)
+        lbl_view = wx.StaticText(panel, label="Ansicht:")
+        w = lbl_view.GetTextExtent("Ansicht:")[0]
+        lbl_view.SetMinSize((max(w, 120) + 8, -1))
+        row_view.Add(lbl_view, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.view_choice = wx.Choice(panel, choices=[])
+        self.view_choice.Disable()
+        row_view.Add(self.view_choice, 1, wx.EXPAND)
+        sizer.Add(row_view, 0, wx.EXPAND | wx.ALL, 6)
+        self._views: list[str] = []
 
         # Meetup name row
         row_meetup = wx.BoxSizer(wx.HORIZONTAL)
@@ -343,6 +359,7 @@ class MainFrame(wx.Frame):
         else:
             self._filtered = list(self._bases)
         self.base_list.Set([b.label for b in self._filtered])
+        self._clear_views()
 
     def _selected_base(self) -> BaseInfo | None:
         idx = self.base_list.GetSelection()
@@ -350,10 +367,102 @@ class MainFrame(wx.Frame):
             return None
         return self._filtered[idx]
 
+    def _end_view_load_busy(self) -> None:
+        if not self._view_load_busy:
+            return
+        try:
+            wx.EndBusyCursor()
+        except Exception:
+            pass
+        self._view_load_busy = False
+
+    def _clear_views(self) -> None:
+        self._view_load_seq += 1
+        self._end_view_load_busy()
+        self._views = []
+        self.view_choice.Clear()
+        self.view_choice.Disable()
+
+    def _selected_view(self) -> str | None:
+        idx = self.view_choice.GetSelection()
+        if idx == wx.NOT_FOUND or idx < 0 or idx >= len(self._views):
+            return None
+        return self._views[idx]
+
+    def _load_views_for_base(self, base: BaseInfo) -> None:
+        # Drop the previous base's views immediately so Create cannot send a stale view name.
+        self._views = []
+        self.view_choice.Clear()
+        self.view_choice.Disable()
+        self._view_load_seq += 1
+        seq = self._view_load_seq
+        if not self._view_load_busy:
+            wx.BeginBusyCursor()
+            self._view_load_busy = True
+        session = self._session
+        workspace_id = base.workspace_id
+        base_name = base.name
+
+        def worker() -> None:
+            views: list[str] = []
+            error: BaseException | None = None
+            try:
+                views = list_view_names(session, workspace_id, base_name)
+            except Exception as e:
+                error = e
+            wx.CallAfter(self._apply_loaded_views, seq, base, views, error)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_loaded_views(
+        self,
+        seq: int,
+        requested: BaseInfo,
+        views: list[str],
+        error: BaseException | None,
+    ) -> None:
+        if seq != self._view_load_seq:
+            return
+        self._end_view_load_busy()
+        selected = self._selected_base()
+        if (
+            selected is None
+            or selected.workspace_id != requested.workspace_id
+            or selected.name != requested.name
+        ):
+            self._clear_views()
+            return
+        if error is not None:
+            title = "SeaTable-Fehler" if isinstance(error, SeaTableError) else "Fehler"
+            wx.MessageBox(str(error), title, wx.OK | wx.ICON_ERROR)
+            self._clear_views()
+            # Deselect so clicking the same Treffen again fires EVT_LISTBOX and retries.
+            self.base_list.SetSelection(wx.NOT_FOUND)
+            return
+
+        self._views = views
+        self.view_choice.Clear()
+        if not self._views:
+            self.view_choice.Disable()
+            return
+        self.view_choice.Set(self._views)
+        self.view_choice.Enable()
+        default = choose_default_view(self._views)
+        if default is not None:
+            try:
+                self.view_choice.SetSelection(self._views.index(default))
+            except ValueError:
+                self.view_choice.SetSelection(0)
+        else:
+            self.view_choice.SetSelection(0)
+
     def _on_base_selected(self, _event: wx.CommandEvent) -> None:
         base = self._selected_base()
         if base:
             self.meetup_name.SetValue(base.name)
+            self._load_views_for_base(base)
+        else:
+            self._clear_views()
 
     def _on_create_list(self, _event: wx.CommandEvent) -> None:
         if self._busy:
@@ -385,6 +494,7 @@ class MainFrame(wx.Frame):
             return
 
         meetup_name = self.meetup_name.GetValue().strip() or base.name
+        view_name = self._selected_view()
         pdf_path = Path(pdf)
 
         self._busy = True
@@ -403,6 +513,7 @@ class MainFrame(wx.Frame):
                     base.name,
                     placeholder,
                     image_output_dir=build_dir,
+                    view_name=view_name,
                     progress=on_progress,
                     cancel_event=progress_dlg.cancel_event,
                 )

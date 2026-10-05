@@ -35,16 +35,16 @@ python gui.py
 
 1. Beim Start erscheinen **E-Mail/Benutzername** und **Passwort** für SeaTable. Die Zugangsdaten bleiben nur im Arbeitsspeicher und werden **nicht** gespeichert.
 2. Nach der Anmeldung erscheint die Liste aller sichtbaren **Bases** (jedes Treffen ist eine eigene Base). Mit dem Filterfeld lässt sich die Liste eingrenzen.
-3. Base auswählen, optional den **Namen des Treffens** anpassen, Zielpfad für die PDF-Datei wählen.
+3. Base auswählen; die verfügbaren **Ansichten** der Anmeldetabelle werden geladen (Standard: „Kontaktliste“, sonst „Default View“, sonst die erste Ansicht). Optional den **Namen des Treffens** anpassen und den Zielpfad für die PDF-Datei wählen.
 4. **Kontaktliste erstellen** lädt die Zeilen und Bilder per SeaTable-API und erzeugt die PDF-Datei.
 
 ### Ablauf im Programm
 
-1. Aus der gewählten Base werden nur Zeilen mit aktivierter **Teilnehmyliste** übernommen (bevorzugt aus einer View, deren Name „Kontaktliste“ enthält, sonst aus der gesamten Tabelle).
+1. Aus der gewählten Base wird die Tabelle mit Spalte **Teilnehmyliste** verwendet (sonst die erste Tabelle). Zeilen kommen aus der gewählten **Ansicht**; nur Einträge mit aktivierter **Teilnehmyliste** werden übernommen.
 2. Pro Teilnehmer/in werden immer **Land**, **Rufname/Pseudonym** und **Teilnehmyliste_Couch** in die Liste übernommen.
-3. **E-Mail**, **Telefonnummer**, **Nachname**, **Vorname** und **Bild** erscheinen nur, wenn die jeweilige Einwilligung gesetzt ist.
+3. **E-Mail**, **Telefonnummer**, **Nachname**, **Vorname** und **Bild** erscheinen nur, wenn die jeweilige Einwilligung gesetzt ist. Stimmen **Vorname** und **Rufname** überein, wird der Rufname in der Namenszeile nicht doppelt gedruckt.
 4. Bilder werden authentifiziert von SeaTable heruntergeladen; die EXIF-Ausrichtung wird automatisch korrigiert. Fehlt die Einwilligung oder kein Bild, wird `data/placeholder.png` verwendet.
-5. Die Liste wird als PDF mit eingebetteten Bildern erzeugt.
+5. Die Liste wird als PDF mit eingebetteten Bildern erzeugt, sortiert nach **Vorname**, **Rufname**, **Nachname**.
 
 ### Hinweis zum Free-Tarif
 
@@ -65,7 +65,7 @@ pytest
 
 ## Projektstruktur
 
-- `gui.py` – grafische Oberfläche (Login, Base-Auswahl, PDF-Ausgabe)
+- `gui.py` – grafische Oberfläche (Login, Base-/Ansicht-Auswahl, PDF-Ausgabe)
 - `seatable_reader.py` – SeaTable-Login, Base-Liste, Zeilen und Bilder laden
 - `render.py` – Jinja2-Rendering und PDF-Erzeugung via xhtml2pdf (Bilder als Data-URLs)
 - `template/contact_list.html.j2` – HTML-Vorlage (Jinja2) für die Kontaktliste

@@ -25,10 +25,15 @@ from seatable_reader import (
     BaseInfo,
     SeaTableAuthError,
     SeaTableCancelled,
+    SeaTableError,
     SeaTableSession,
+    _coerce_view_list,
     _image_urls_from_cell,
+    _pick_view_name,
     _truthy,
+    choose_default_view,
     list_bases,
+    list_view_names,
     load_participants,
     login,
 )
@@ -332,3 +337,91 @@ def test_load_participants_placeholder_without_image_consent(
     )
     assert len(result) == 1
     assert Path(result[0]["image_path"]).read_bytes() == placeholder_path.read_bytes()
+
+
+def test_load_participants_propagates_view_list_error(
+    tmp_path: Path, placeholder_path: Path
+) -> None:
+    base = MagicMock()
+    base.get_metadata.return_value = {
+        "tables": [{"name": "T", "columns": [{"name": CONSENT_LIST}]}]
+    }
+    base.list_views.side_effect = Exception("views down")
+    account = MagicMock()
+    account.get_base.return_value = base
+    session = SeaTableSession(account=account, server_url="https://cloud.seatable.io")
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    with pytest.raises(SeaTableError, match="views down"):
+        load_participants(session, 1, "Base", placeholder_path, image_output_dir=out_dir)
+
+
+def test_choose_default_view_preferences() -> None:
+    assert choose_default_view([]) is None
+    assert choose_default_view(["Alpha", "Beta"]) == "Alpha"
+    assert choose_default_view(["Alpha", "Default View", "Beta"]) == "Default View"
+    assert choose_default_view(["Alpha", "default view", "Kontaktliste"]) == "Kontaktliste"
+    assert choose_default_view(["Default View", "kontaktliste"]) == "kontaktliste"
+
+
+def test_pick_view_name_uses_exact_defaults() -> None:
+    base = MagicMock()
+    base.list_views.return_value = {
+        "views": [
+            {"name": "All"},
+            {"name": "Default View"},
+            {"name": "My Kontaktliste Filter"},
+        ]
+    }
+    assert _pick_view_name(base, "T") == "Default View"
+
+    base.list_views.return_value = {
+        "views": [
+            {"name": "All"},
+            {"name": "Kontaktliste"},
+            {"name": "Default View"},
+        ]
+    }
+    assert _pick_view_name(base, "T") == "Kontaktliste"
+
+    base.list_views.return_value = {"views": [{"name": "Only"}]}
+    assert _pick_view_name(base, "T") == "Only"
+
+    assert _pick_view_name(base, "T", view_name="Custom") == "Custom"
+
+
+def test_coerce_view_list_unwraps_sdk_dict() -> None:
+    assert _coerce_view_list(None) == []
+    assert _coerce_view_list([{"name": "A"}]) == [{"name": "A"}]
+    wrapped = {
+        "views": [
+            {"name": "Default View"},
+            {"name": "Kontaktliste"},
+        ]
+    }
+    assert _coerce_view_list(wrapped) == wrapped["views"]
+    # Iterating the dict itself would yield only the key "views".
+    assert list(wrapped) == ["views"]
+
+
+def test_list_view_names_resolves_table() -> None:
+    base = MagicMock()
+    base.get_metadata.return_value = {
+        "tables": [
+            {"name": "Other", "columns": [{"name": "X"}]},
+            {"name": "Anmeldung", "columns": [{"name": CONSENT_LIST}]},
+        ]
+    }
+    base.list_views.return_value = {
+        "views": [
+            {"name": "Default View"},
+            {"name": "Kontaktliste"},
+        ]
+    }
+    account = MagicMock()
+    account.get_base.return_value = base
+    session = SeaTableSession(account=account, server_url="https://cloud.seatable.io")
+
+    names = list_view_names(session, 1, "Base")
+    assert names == ["Default View", "Kontaktliste"]
+    base.list_views.assert_called_once_with("Anmeldung")
