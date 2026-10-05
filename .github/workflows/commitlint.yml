@@ -21,9 +21,35 @@ jobs:
         run: |
           npm install --save-dev @commitlint/config-conventional@19 @commitlint/cli@19
 
+      # After a squash-merge the PR branch commits may already be gone while a
+      # late pull_request job still runs. Fetch the head explicitly; if it is
+      # unavailable, skip range lint (PR title is still validated next).
       - name: Validate PR commits
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
+          set -euo pipefail
+          ensure_commit() {
+            local sha="$1"
+            git cat-file -e "${sha}^{commit}" 2>/dev/null
+          }
+          if ! ensure_commit "${HEAD_SHA}"; then
+            echo "PR head ${HEAD_SHA} not in checkout; fetching…"
+            git fetch --no-tags --depth=1 origin "${HEAD_SHA}" \
+              || git fetch --no-tags --depth=1 origin "pull/${PR_NUMBER}/head" \
+              || true
+          fi
+          if ! ensure_commit "${HEAD_SHA}"; then
+            echo "PR head is no longer available (likely already merged)."
+            echo "Skipping commit-range lint; PR title is still validated next."
+            exit 0
+          fi
+          if ! ensure_commit "${BASE_SHA}"; then
+            git fetch --no-tags --depth=1 origin "${BASE_SHA}" || true
+          fi
+          npx commitlint --from "${BASE_SHA}" --to "${HEAD_SHA}" --verbose
 
       - name: Validate PR title
         run: |
