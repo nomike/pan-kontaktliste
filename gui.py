@@ -436,6 +436,8 @@ class MainFrame(wx.Frame):
             title = "SeaTable-Fehler" if isinstance(error, SeaTableError) else "Fehler"
             wx.MessageBox(str(error), title, wx.OK | wx.ICON_ERROR)
             self._clear_views()
+            # Deselect so clicking the same Treffen again fires EVT_LISTBOX and retries.
+            self.base_list.SetSelection(wx.NOT_FOUND)
             return
 
         self._views = views
