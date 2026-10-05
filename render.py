@@ -54,7 +54,7 @@ def _display_name_parts(participant: dict) -> tuple[str, ...]:
     vorname = _field(participant, "vorname")
     rufname = _field(participant, "rufname")
     nachname = _field(participant, "nachname")
-    if vorname and rufname and vorname.casefold() == rufname.casefold():
+    if vorname and rufname and vorname.lower() == rufname.lower():
         rufname = ""
     return tuple(part for part in (vorname, rufname, nachname) if part)
 

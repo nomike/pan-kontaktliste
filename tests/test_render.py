@@ -118,6 +118,19 @@ def test_build_html_omits_rufname_when_equal_to_vorname(
     html_diff = _build_html(different)
     assert "Silke Sille Berendes" in html_diff
 
+    sharp_s = [
+        {
+            "land": "DE",
+            "vorname": "Weiß",
+            "rufname": "Weiss",
+            "nachname": "M",
+            "couch": "",
+            "image_path": str(placeholder_path),
+        },
+    ]
+    html_ss = _build_html(sharp_s)
+    assert "Weiß Weiss M" in html_ss
+
 
 def test_build_html_sorts_by_vorname_rufname_nachname(
     tmp_path: Path, placeholder_path: Path
