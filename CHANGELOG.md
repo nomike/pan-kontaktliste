@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.8.0](https://github.com/nomike/pan-kontaktliste/compare/v0.7.1...v0.8.0) (2026-10-05)
+
+
+### Features
+
+* pick SeaTable view, dedupe names, and sort the PDF ([#34](https://github.com/nomike/pan-kontaktliste/issues/34)) ([7a224a3](https://github.com/nomike/pan-kontaktliste/commit/7a224a3312b635888571dc018398993cc2f2246c))
+
 ## [0.7.1](https://github.com/nomike/pan-kontaktliste/compare/v0.7.0...v0.7.1) (2026-09-28)
 
 
