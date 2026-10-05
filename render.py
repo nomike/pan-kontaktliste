@@ -42,6 +42,42 @@ def _image_to_data_url(image_path: str | Path) -> str:
         return ""
 
 
+def _field(participant: dict, key: str) -> str:
+    value = participant.get(key)
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _display_name_parts(participant: dict) -> tuple[str, ...]:
+    """Name parts as printed: Vorname, Rufname (if different), Nachname."""
+    vorname = _field(participant, "vorname")
+    rufname = _field(participant, "rufname")
+    nachname = _field(participant, "nachname")
+    if vorname and rufname and vorname.casefold() == rufname.casefold():
+        rufname = ""
+    return tuple(part for part in (vorname, rufname, nachname) if part)
+
+
+def _sort_normalize(text: str) -> str:
+    """Case-insensitive German-friendly comparison (ä/ö/ü/ß as ae/oe/ue/ss)."""
+    folded = text.casefold()
+    return (
+        folded.replace("ä", "ae")
+        .replace("ö", "oe")
+        .replace("ü", "ue")
+        .replace("ß", "ss")
+    )
+
+
+def _name_sort_key(participant: dict) -> tuple[str, ...]:
+    """Sort by the printed name (Vorname, Rufname, Nachname)."""
+    parts = _display_name_parts(participant)
+    if not parts:
+        return ("",)
+    return tuple(_sort_normalize(part) for part in parts)
+
+
 def _build_html(
     participants: list[dict],
     meetup_name: str = "",
@@ -53,6 +89,8 @@ def _build_html(
     Adds 'image_data' (data URL) to each participant for the template.
     meetup_name is used as the HTML page title and h1; if empty, falls back to
     "Teilnehmendenkontaktliste".
+    Entries are sorted by the printed name (Vorname, Rufname if different,
+    Nachname).
     """
     if template_dir is None:
         template_dir = _base_path() / "template"
@@ -62,12 +100,14 @@ def _build_html(
         autoescape=select_autoescape(["html", "htm", "xml", "j2"]),
     )
 
-    for p in participants:
+    ordered = sorted(participants, key=_name_sort_key)
+    for p in ordered:
         p["image_data"] = _image_to_data_url(p["image_path"])
+        p["display_name"] = " ".join(_display_name_parts(p))
 
     template = env.get_template("contact_list.html.j2")
     return template.render(
-        participants=participants,
+        participants=ordered,
         meetup_name=meetup_name.strip(),
     )
 
