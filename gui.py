@@ -390,6 +390,10 @@ class MainFrame(wx.Frame):
         return self._views[idx]
 
     def _load_views_for_base(self, base: BaseInfo) -> None:
+        # Drop the previous base's views immediately so Create cannot send a stale view name.
+        self._views = []
+        self.view_choice.Clear()
+        self.view_choice.Disable()
         self._view_load_seq += 1
         seq = self._view_load_seq
         if not self._view_load_busy:
