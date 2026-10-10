@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.8.1](https://github.com/nomike/pan-kontaktliste/compare/v0.8.0...v0.8.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **ci:** tolerate missing PR head in commitlint after merge ([#36](https://github.com/nomike/pan-kontaktliste/issues/36)) ([41b4a76](https://github.com/nomike/pan-kontaktliste/commit/41b4a763013a03f9f8a4e741d15cfa70fab2c4ad))
+
 ## [0.8.0](https://github.com/nomike/pan-kontaktliste/compare/v0.7.1...v0.8.0) (2026-10-05)
 
 
