@@ -18,6 +18,14 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Set versioned artifact name
+        id: artifact
+        shell: bash
+        run: |
+          version="${{ github.event.release.tag_name }}"
+          version="${version#v}"
+          echo "name=PAN-Kontaktliste-${version}" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -27,7 +35,7 @@ jobs:
       - name: Build executable
         shell: cmd
         run: |
-          pyinstaller --onefile --windowed --name "PAN-Kontaktliste" ^
+          pyinstaller --onefile --windowed --name "${{ steps.artifact.outputs.name }}" ^
             --icon "data/app-icon.ico" ^
             --add-data "data/placeholder.png;data" ^
             --add-data "data/app-icon.png;data" ^
@@ -38,10 +46,10 @@ jobs:
 
       - name: Create zip
         run: |
-          Compress-Archive -Path dist\PAN-Kontaktliste.exe -DestinationPath dist\PAN-Kontaktliste-windows.zip
+          Compress-Archive -Path "dist\${{ steps.artifact.outputs.name }}.exe" -DestinationPath "dist\${{ steps.artifact.outputs.name }}-windows.zip"
 
       - name: Upload to release
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" dist/PAN-Kontaktliste.exe dist/PAN-Kontaktliste-windows.zip --clobber
+          gh release upload "${{ github.event.release.tag_name }}" "dist/${{ steps.artifact.outputs.name }}.exe" "dist/${{ steps.artifact.outputs.name }}-windows.zip" --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
