@@ -52,7 +52,7 @@ SeaTable Cloud Free begrenzt die API-Nutzung (aktuell ca. 3 000 Aufrufe pro Mo
 
 ## Versionierung und Releases
 
-Die Version wird mit [Release Please](https://github.com/googleapis/release-please) verwaltet (Conventional Commits auf `main`). Beim Veröffentlichen eines Releases erstellt eine GitHub Action automatisch **Windows-Builds** (`.exe` und `.zip`) und hängt sie dem Release an.
+Die Version wird mit [Release Please](https://github.com/googleapis/release-please) verwaltet (Conventional Commits auf `main`). Beim Veröffentlichen eines Releases erstellt eine GitHub Action automatisch **Windows-Builds** (z. B. `PAN-Kontaktliste-0.9.0.exe` und `PAN-Kontaktliste-0.9.0-windows.zip`) und hängt sie dem Release an.
 
 - **Hilfe → Über PAN Kontaktliste** im Programm zeigt Version, Lizenz und Link zum [GitHub-Projekt](https://github.com/nomike/pan-kontaktliste).
 
