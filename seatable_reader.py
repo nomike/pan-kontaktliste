@@ -625,9 +625,10 @@ def _ensure_image_for_render(
     if _is_fresh_cache_file(cache_path) and _copy_cached_image(cache_path, dest):
         return True
     # Miss, expired, or raced away (e.g. wipe in another process): download again.
-    if not _download_image(base, url, cache_path):
-        return False
-    return _copy_cached_image(cache_path, dest)
+    if _download_image(base, url, cache_path) and _copy_cached_image(cache_path, dest):
+        return True
+    # Cache still unusable after download (concurrent wipe/prune): render dest directly.
+    return _download_image(base, url, dest)
 
 
 def _use_placeholder(placeholder_path: Path, image_output_dir: Path, index: int) -> str:
