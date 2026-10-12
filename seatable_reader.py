@@ -586,9 +586,12 @@ def _download_image(base, url: str, dest: Path) -> bool:
     finally:
         _unlink_quiet(partial)
         if not ok:
-            # Do not leave a truncated/incomplete dest from a previous failed replace edge case.
-            if dest.exists() and dest.stat().st_size <= 0:
-                _unlink_quiet(dest)
+            # Best-effort: another process may wipe the cache between exists and stat.
+            try:
+                if dest.exists() and dest.stat().st_size <= 0:
+                    _unlink_quiet(dest)
+            except OSError:
+                pass
 
 
 def _copy_cached_image(cache_path: Path, dest: Path) -> bool:
