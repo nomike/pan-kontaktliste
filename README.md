@@ -36,15 +36,26 @@ python gui.py
 1. Beim Start erscheinen **E-Mail/Benutzername** und **Passwort** für SeaTable. Die Zugangsdaten bleiben nur im Arbeitsspeicher und werden **nicht** gespeichert.
 2. Nach der Anmeldung erscheint die Liste aller sichtbaren **Bases** (jedes Treffen ist eine eigene Base). Mit dem Filterfeld lässt sich die Liste eingrenzen.
 3. Base auswählen; die verfügbaren **Ansichten** der Anmeldetabelle werden geladen (Standard: „Kontaktliste“, sonst „Default View“, sonst die erste Ansicht). Optional den **Namen des Treffens** anpassen und den Zielpfad für die PDF-Datei wählen.
-4. **Kontaktliste erstellen** lädt die Zeilen und Bilder per SeaTable-API und erzeugt die PDF-Datei.
+4. **Kontaktliste erstellen** lädt die Zeilen und Bilder per SeaTable-API und erzeugt die PDF-Datei. Bereits heruntergeladene Bilder kommen aus einem lokalen Cache (siehe unten).
+5. **Bildcache leeren** entfernt alle zwischengespeicherten Bilder (z. B. bei einem beschädigten Bild).
 
 ### Ablauf im Programm
 
 1. Aus der gewählten Base wird die Tabelle mit Spalte **Teilnehmyliste** verwendet (sonst die erste Tabelle). Zeilen kommen aus der gewählten **Ansicht**; nur Einträge mit aktivierter **Teilnehmyliste** werden übernommen.
 2. Pro Teilnehmer/in werden immer **Land**, **Rufname/Pseudonym** und **Teilnehmyliste_Couch** in die Liste übernommen.
 3. **E-Mail**, **Telefonnummer**, **Nachname**, **Vorname** und **Bild** erscheinen nur, wenn die jeweilige Einwilligung gesetzt ist. Stimmen **Vorname** und **Rufname** überein, wird der Rufname in der Namenszeile nicht doppelt gedruckt.
-4. Bilder werden authentifiziert von SeaTable heruntergeladen; die EXIF-Ausrichtung wird automatisch korrigiert. Fehlt die Einwilligung oder kein Bild, wird `data/placeholder.png` verwendet.
+4. Bilder werden authentifiziert von SeaTable heruntergeladen und im lokalen Bildcache abgelegt; die EXIF-Ausrichtung wird automatisch korrigiert. Fehlt die Einwilligung oder kein Bild, wird `data/placeholder.png` verwendet.
 5. Die Liste wird als PDF mit eingebetteten Bildern erzeugt, sortiert nach **Vorname**, **Rufname**, **Nachname**.
+
+### Bildcache
+
+Teilnehmerbilder werden plattformspezifisch im Benutzer-Cache gespeichert (über [platformdirs](https://pypi.org/project/platformdirs/)), typischerweise:
+
+- Linux: `~/.cache/pan-kontaktliste/images/`
+- macOS: `~/Library/Caches/pan-kontaktliste/images/`
+- Windows: `%LOCALAPPDATA%\pan-kontaktliste\Cache\images\`
+
+Einträge verfallen nach **90 Tagen** (Löschung beim Programmstart). Beim erneuten Erzeugen einer Kontaktliste werden unveränderte Bilder aus dem Cache wiederverwendet, ohne SeaTable erneut zu belasten. Mit **Bildcache leeren** lässt sich der Cache vollständig löschen.
 
 ### Hinweis zum Free-Tarif
 
