@@ -415,9 +415,11 @@ def _cache_identity_from_url(
     idx = path.find(marker)
     if idx >= 0:
         rest = path[idx + len(marker) :].lstrip("/")
-        # Expect ``{uuid}/images/...`` or ``{uuid}/files/...``.
-        if "/images/" in rest or "/files/" in rest or rest.startswith(("images/", "files/")):
+        # ``{uuid}/images/...`` or ``{uuid}/files/...`` — UUID already in path.
+        first, sep, after = rest.partition("/")
+        if sep and after.startswith(("images/", "files/")) and first not in ("images", "files"):
             return f"{host}/{rest}" if host else rest
+        # ``asset/images/...`` without UUID: fall through and prefix dtable_uuid.
 
     asset = _asset_path_from_url(url)
     if asset:

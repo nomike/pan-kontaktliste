@@ -334,6 +334,14 @@ class MainFrame(wx.Frame):
                 self.pdf_path.SetValue(path)
 
     def _on_clear_image_cache(self, _event: wx.CommandEvent) -> None:
+        if self._busy:
+            wx.MessageBox(
+                "Der Bildcache kann nicht geleert werden, während eine "
+                "Kontaktliste erzeugt wird.",
+                "Bildcache",
+                wx.OK | wx.ICON_INFORMATION,
+            )
+            return
         try:
             cache_dir = get_image_cache_dir()
         except Exception as e:
@@ -534,6 +542,7 @@ class MainFrame(wx.Frame):
 
         self._busy = True
         self.create_btn.Disable()
+        self.clear_cache_btn.Disable()
         progress_dlg = ProgressDialog(self)
 
         def on_progress(message: str, current: int, total: int) -> None:
@@ -586,6 +595,7 @@ class MainFrame(wx.Frame):
             progress_dlg.EndModal(wx.ID_CANCEL if error or pdf is None else wx.ID_OK)
         self._busy = False
         self.create_btn.Enable()
+        self.clear_cache_btn.Enable()
 
         if isinstance(error, SeaTableCancelled):
             wx.MessageBox("Vorgang abgebrochen.", "Abbruch", wx.OK | wx.ICON_INFORMATION)

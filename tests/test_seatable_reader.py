@@ -498,6 +498,21 @@ def test_cache_identity_includes_dtable_uuid() -> None:
     assert id_a != id_b
     assert "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" in id_a
 
+    # UUID-less /asset/images/... must still incorporate the open base's UUID.
+    bare_asset = "https://cloud.seatable.io/workspace/1/asset/images/2026-01/photo.jpg"
+    bare_a = _cache_identity_from_url(
+        bare_asset,
+        dtable_uuid="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        server_url="https://cloud.seatable.io",
+    )
+    bare_b = _cache_identity_from_url(
+        bare_asset,
+        dtable_uuid="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        server_url="https://cloud.seatable.io",
+    )
+    assert bare_a != bare_b
+    assert "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" in bare_a
+
 
 def test_image_cache_hit_skips_download(
     tmp_path: Path, placeholder_path: Path
