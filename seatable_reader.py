@@ -648,9 +648,9 @@ def load_participants(
     image_output_dir: Path | None = None,
     table_name: str | None = None,
     view_name: str | None = None,
-    image_cache_dir: Path | None = None,
     progress: ProgressCallback | None = None,
     cancel_event: threading.Event | None = None,
+    image_cache_dir: Path | None = None,
 ) -> list[dict[str, Any]]:
     """
     Load rows from a SeaTable base, filter by Teilnehmyliste, apply per-field
