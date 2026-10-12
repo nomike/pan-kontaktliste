@@ -644,6 +644,78 @@ def test_prune_and_wipe_image_cache(tmp_path: Path) -> None:
     assert not fresh_partial.exists()
 
 
+def test_image_cache_dir_is_owner_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
+    import seatable_reader as sr
+
+    if os.name != "posix":
+        pytest.skip("owner-only chmod is POSIX-specific")
+
+    root = tmp_path / "cache-root"
+    monkeypatch.setattr(sr, "user_cache_dir", lambda *a, **k: str(root))
+    cache = sr.get_image_cache_dir()
+    assert cache.is_dir()
+    assert (cache.stat().st_mode & 0o777) == 0o700
+
+
+def test_fresh_cache_copy_race_falls_back_to_download(
+    tmp_path: Path, placeholder_path: Path
+) -> None:
+    """If a fresh cache file disappears before copy, re-download instead of placeholder."""
+    url = (
+        "https://cloud.seatable.io/workspace/1/asset/"
+        "11111111-1111-1111-1111-111111111111/images/2026-01/a.jpg"
+    )
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    cached = cache_path_for_url(url, cache_dir, server_url="https://cloud.seatable.io")
+    cached.write_bytes(b"about-to-vanish")
+
+    base = MagicMock()
+    base.get_metadata.return_value = {
+        "tables": [{"name": "T", "columns": [{"name": CONSENT_LIST}]}]
+    }
+    base.list_views.return_value = []
+    base.list_rows.return_value = [
+        _row(**{CONSENT_BILD: True, DATA_BILD: [url], DATA_RUFNAME: "Race"})
+    ]
+    base.dtable_uuid = "11111111-1111-1111-1111-111111111111"
+
+    real_copy = __import__("shutil").copy2
+    vanished = {"done": False}
+
+    def vanish_then_copy(src: object, dst: object, *args: object, **kwargs: object) -> object:
+        src_path = Path(str(src))
+        if not vanished["done"] and src_path == cached and src_path.exists():
+            vanished["done"] = True
+            src_path.unlink()
+            raise FileNotFoundError(str(src_path))
+        return real_copy(src, dst, *args, **kwargs)
+
+    def fake_download(u: str, path: str) -> None:
+        Path(path).write_bytes(b"recovered")
+
+    base.download_file.side_effect = fake_download
+    account = MagicMock()
+    account.get_base.return_value = base
+    session = SeaTableSession(account=account, server_url="https://cloud.seatable.io")
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    with patch("seatable_reader.shutil.copy2", side_effect=vanish_then_copy):
+        result = load_participants(
+            session,
+            1,
+            "Base",
+            placeholder_path,
+            image_output_dir=out_dir,
+            image_cache_dir=cache_dir,
+        )
+    assert Path(result[0]["image_path"]).read_bytes() == b"recovered"
+    base.download_file.assert_called()
+
+
 def test_wipe_image_cache_raises_on_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -7,6 +7,7 @@ rows and images via the official seatable-api SDK.
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import tempfile
 import threading
@@ -376,12 +377,25 @@ def _asset_path_from_url(url: str) -> str | None:
     return None
 
 
+def _chmod_owner_only(path: Path, *, is_dir: bool) -> None:
+    """Best-effort owner-only perms on POSIX; no-op / ignored on Windows ACLs."""
+    if os.name != "posix":
+        return
+    mode = 0o700 if is_dir else 0o600
+    try:
+        path.chmod(mode)
+    except OSError:
+        pass
+
+
 def get_image_cache_dir() -> Path:
     """Return the persistent image cache directory (created if missing)."""
     # appauthor=False avoids Windows nesting ``App\App\Cache``.
     root = Path(user_cache_dir(APP_CACHE_NAME, appauthor=False, ensure_exists=True))
+    _chmod_owner_only(root, is_dir=True)
     cache_dir = root / "images"
     cache_dir.mkdir(parents=True, exist_ok=True)
+    _chmod_owner_only(cache_dir, is_dir=True)
     return cache_dir
 
 
@@ -545,6 +559,7 @@ def _download_image(base, url: str, dest: Path) -> bool:
             base.download_file(url, str(partial))
             if partial.is_file() and partial.stat().st_size > 0:
                 partial.replace(dest)
+                _chmod_owner_only(dest, is_dir=False)
                 ok = True
                 return True
         except Exception:
@@ -563,6 +578,7 @@ def _download_image(base, url: str, dest: Path) -> bool:
         if partial.stat().st_size <= 0:
             return False
         partial.replace(dest)
+        _chmod_owner_only(dest, is_dir=False)
         ok = True
         return True
     except Exception:
@@ -603,8 +619,9 @@ def _ensure_image_for_render(
         dtable_uuid=_base_dtable_uuid(base),
         server_url=server_url,
     )
-    if _is_fresh_cache_file(cache_path):
-        return _copy_cached_image(cache_path, dest)
+    if _is_fresh_cache_file(cache_path) and _copy_cached_image(cache_path, dest):
+        return True
+    # Miss, expired, or raced away (e.g. wipe in another process): download again.
     if not _download_image(base, url, cache_path):
         return False
     return _copy_cached_image(cache_path, dest)
