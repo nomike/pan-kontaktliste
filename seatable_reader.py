@@ -11,6 +11,7 @@ import shutil
 import tempfile
 import threading
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,8 @@ DEFAULT_SERVER_URL = "https://cloud.seatable.io"
 DOWNLOAD_TIMEOUT_S = 20
 APP_CACHE_NAME = "pan-kontaktliste"
 IMAGE_CACHE_TTL_S = 90 * 24 * 60 * 60  # 90 days
+# Only prune abandoned in-progress downloads; active downloads use unique *.partial names.
+PARTIAL_MAX_AGE_S = 60 * 60
 
 # Column names in the SeaTable base (exact match)
 CONSENT_LIST = "Teilnehmyliste"
@@ -381,30 +384,70 @@ def get_image_cache_dir() -> Path:
     return cache_dir
 
 
-def _cache_identity_from_url(url: str) -> str:
+def _base_dtable_uuid(base: Any) -> str | None:
+    for attr in ("dtable_uuid", "uuid"):
+        val = getattr(base, attr, None)
+        if val:
+            return str(val)
+    return None
+
+
+def _cache_identity_from_url(
+    url: str,
+    *,
+    dtable_uuid: str | None = None,
+    server_url: str | None = None,
+) -> str:
     """
     Stable identity for cache keys.
 
-    Prefers ``{dtable_uuid}/images/...`` (or ``files``) so paths collide only when
-    they refer to the same SeaTable asset. Falls back to the URL path.
+    Prefers ``{host}/{dtable_uuid}/images/...`` (or ``files``) so paths collide only
+    when they refer to the same SeaTable asset. Relative asset URLs must pass
+    ``dtable_uuid`` (and ideally ``server_url``) from the open base.
     """
-    path = unquote(urlparse(url).path)
+    parsed = urlparse(url)
+    path = unquote(parsed.path)
+    host = urlparse(server_url).netloc if server_url else ""
+    if not host:
+        host = parsed.netloc
+
     marker = "/asset/"
     idx = path.find(marker)
     if idx >= 0:
         rest = path[idx + len(marker) :].lstrip("/")
         # Expect ``{uuid}/images/...`` or ``{uuid}/files/...``.
         if "/images/" in rest or "/files/" in rest or rest.startswith(("images/", "files/")):
-            return rest
+            return f"{host}/{rest}" if host else rest
+
     asset = _asset_path_from_url(url)
     if asset:
-        return asset.lstrip("/")
-    return path.lstrip("/") or url
+        parts: list[str] = []
+        if host:
+            parts.append(host)
+        if dtable_uuid:
+            parts.append(dtable_uuid)
+        parts.append(asset.lstrip("/"))
+        return "/".join(parts)
+
+    fallback = path.lstrip("/") or url
+    if host and dtable_uuid:
+        return f"{host}/{dtable_uuid}/{fallback}"
+    if dtable_uuid:
+        return f"{dtable_uuid}/{fallback}"
+    if host:
+        return f"{host}/{fallback}"
+    return fallback
 
 
-def cache_path_for_url(url: str, cache_dir: Path | None = None) -> Path:
+def cache_path_for_url(
+    url: str,
+    cache_dir: Path | None = None,
+    *,
+    dtable_uuid: str | None = None,
+    server_url: str | None = None,
+) -> Path:
     """Return the on-disk cache path for a SeaTable image URL."""
-    identity = _cache_identity_from_url(url)
+    identity = _cache_identity_from_url(url, dtable_uuid=dtable_uuid, server_url=server_url)
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
     ext = _suffix_from_url(url)
     base = Path(cache_dir) if cache_dir is not None else get_image_cache_dir()
@@ -432,7 +475,7 @@ def prune_image_cache(
     cache_dir: Path | None = None,
     max_age_s: int = IMAGE_CACHE_TTL_S,
 ) -> int:
-    """Delete expired (and leftover ``.partial``) cache files. Returns count removed."""
+    """Delete expired cache files and abandoned ``*.partial`` temps. Returns count removed."""
     base = Path(cache_dir) if cache_dir is not None else get_image_cache_dir()
     if not base.is_dir():
         return 0
@@ -442,7 +485,12 @@ def prune_image_cache(
         if not path.is_file():
             continue
         try:
-            if path.name.endswith(".partial") or (now - path.stat().st_mtime) > max_age_s:
+            age = now - path.stat().st_mtime
+            if path.name.endswith(".partial"):
+                if age > PARTIAL_MAX_AGE_S:
+                    path.unlink()
+                    removed += 1
+            elif age > max_age_s:
                 path.unlink()
                 removed += 1
         except OSError:
@@ -451,19 +499,30 @@ def prune_image_cache(
 
 
 def wipe_image_cache(cache_dir: Path | None = None) -> int:
-    """Delete all files in the image cache. Returns count removed."""
+    """
+    Delete all files in the image cache. Returns count removed.
+
+    Raises ``OSError`` if any file could not be deleted so callers can report
+    an incomplete wipe.
+    """
     base = Path(cache_dir) if cache_dir is not None else get_image_cache_dir()
     if not base.is_dir():
         return 0
     removed = 0
+    failures: list[str] = []
     for path in base.iterdir():
         if not path.is_file():
             continue
         try:
             path.unlink()
             removed += 1
-        except OSError:
-            continue
+        except OSError as e:
+            failures.append(f"{path.name}: {e}")
+    if failures:
+        raise OSError(
+            f"Bildcache konnte nicht vollständig geleert werden "
+            f"({removed} entfernt, {len(failures)} fehlgeschlagen): {failures[0]}"
+        )
     return removed
 
 
@@ -471,13 +530,12 @@ def _download_image(base, url: str, dest: Path) -> bool:
     """
     Download one SeaTable image URL to dest.
 
-    Writes via a sibling ``.partial`` file and only replaces ``dest`` on success.
-    Incomplete ``.partial`` files (and a failed new ``dest``) are removed.
+    Writes via a unique sibling ``*.partial`` file and only replaces ``dest`` on
+    success. Incomplete partial files are removed on failure.
     """
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    partial = dest.with_name(dest.name + ".partial")
-    _unlink_quiet(partial)
+    partial = dest.with_name(f"{dest.name}.{uuid.uuid4().hex}.partial")
     ok = False
     try:
         try:
@@ -528,17 +586,23 @@ def _ensure_image_for_render(
     url: str,
     dest: Path,
     cache_dir: Path,
+    *,
+    server_url: str | None = None,
 ) -> bool:
     """
     Ensure ``dest`` holds the image for PDF rendering.
 
     Downloads into the persistent cache (on miss / expiry), then copies into ``dest``.
     """
-    cache_path = cache_path_for_url(url, cache_dir)
+    cache_path = cache_path_for_url(
+        url,
+        cache_dir,
+        dtable_uuid=_base_dtable_uuid(base),
+        server_url=server_url,
+    )
     if _is_fresh_cache_file(cache_path):
         return _copy_cached_image(cache_path, dest)
     if not _download_image(base, url, cache_path):
-        _unlink_quiet(cache_path.with_name(cache_path.name + ".partial"))
         return False
     return _copy_cached_image(cache_path, dest)
 
@@ -558,9 +622,9 @@ def load_participants(
     base_name: str,
     placeholder_image_path: str | Path,
     image_output_dir: Path | None = None,
-    image_cache_dir: Path | None = None,
     table_name: str | None = None,
     view_name: str | None = None,
+    image_cache_dir: Path | None = None,
     progress: ProgressCallback | None = None,
     cancel_event: threading.Event | None = None,
 ) -> list[dict[str, Any]]:
@@ -651,7 +715,13 @@ def load_participants(
                 )
                 ext = _suffix_from_url(urls[0])
                 dest = image_output_dir / f"teilnehmer_{idx}{ext}"
-                if _ensure_image_for_render(base, urls[0], dest, cache_dir):
+                if _ensure_image_for_render(
+                    base,
+                    urls[0],
+                    dest,
+                    cache_dir,
+                    server_url=session.server_url,
+                ):
                     image_path = str(dest)
 
         if image_path is None:

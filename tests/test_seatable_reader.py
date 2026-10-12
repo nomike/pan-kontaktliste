@@ -476,13 +476,27 @@ def test_cache_identity_includes_dtable_uuid() -> None:
         "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/images/2026-01/photo.jpg"
     )
     assert _cache_identity_from_url(url_a) == (
-        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/images/2026-01/photo.jpg"
+        "cloud.seatable.io/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/images/2026-01/photo.jpg"
     )
     assert _cache_identity_from_url(url_a) != _cache_identity_from_url(url_b)
     path_a = cache_path_for_url(url_a, Path("/tmp/cache"))
     path_b = cache_path_for_url(url_b, Path("/tmp/cache"))
     assert path_a.name != path_b.name
     assert path_a.suffix == ".jpg"
+
+    relative = "/images/2026-01/photo.jpg"
+    id_a = _cache_identity_from_url(
+        relative,
+        dtable_uuid="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        server_url="https://cloud.seatable.io",
+    )
+    id_b = _cache_identity_from_url(
+        relative,
+        dtable_uuid="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        server_url="https://cloud.seatable.io",
+    )
+    assert id_a != id_b
+    assert "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" in id_a
 
 
 def test_image_cache_hit_skips_download(
@@ -494,7 +508,11 @@ def test_image_cache_hit_skips_download(
     )
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
-    cached = cache_path_for_url(url, cache_dir)
+    cached = cache_path_for_url(
+        url,
+        cache_dir,
+        server_url="https://cloud.seatable.io",
+    )
     cached.write_bytes(b"cached-bytes")
 
     base = MagicMock()
@@ -538,7 +556,11 @@ def test_image_cache_expired_redownloads(
     )
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
-    cached = cache_path_for_url(url, cache_dir)
+    cached = cache_path_for_url(
+        url,
+        cache_dir,
+        server_url="https://cloud.seatable.io",
+    )
     cached.write_bytes(b"stale")
     old = time.time() - (sr.IMAGE_CACHE_TTL_S + 60)
     os.utime(cached, (old, old))
@@ -585,18 +607,43 @@ def test_prune_and_wipe_image_cache(tmp_path: Path) -> None:
     cache_dir.mkdir()
     fresh = cache_dir / "fresh.jpg"
     stale = cache_dir / "stale.jpg"
-    partial = cache_dir / "x.jpg.partial"
+    fresh_partial = cache_dir / "x.jpg.abc123.partial"
+    abandoned_partial = cache_dir / "y.jpg.def456.partial"
     fresh.write_bytes(b"ok")
     stale.write_bytes(b"old")
-    partial.write_bytes(b"tmp")
+    fresh_partial.write_bytes(b"tmp")
+    abandoned_partial.write_bytes(b"tmp")
     old = time.time() - (sr.IMAGE_CACHE_TTL_S + 10)
     os.utime(stale, (old, old))
+    os.utime(abandoned_partial, (time.time() - (sr.PARTIAL_MAX_AGE_S + 10),) * 2)
 
     removed = prune_image_cache(cache_dir)
     assert removed == 2
     assert fresh.exists()
+    assert fresh_partial.exists()
     assert not stale.exists()
-    assert not partial.exists()
+    assert not abandoned_partial.exists()
 
-    assert wipe_image_cache(cache_dir) == 1
+    assert wipe_image_cache(cache_dir) == 2
     assert not fresh.exists()
+    assert not fresh_partial.exists()
+
+
+def test_wipe_image_cache_raises_on_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    kept = cache_dir / "kept.jpg"
+    kept.write_bytes(b"x")
+
+    real_unlink = Path.unlink
+
+    def flaky_unlink(self: Path, *args: object, **kwargs: object) -> None:
+        if self.name == "kept.jpg":
+            raise OSError("permission denied")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", flaky_unlink)
+    with pytest.raises(OSError, match="nicht vollständig"):
+        wipe_image_cache(cache_dir)

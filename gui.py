@@ -334,7 +334,11 @@ class MainFrame(wx.Frame):
                 self.pdf_path.SetValue(path)
 
     def _on_clear_image_cache(self, _event: wx.CommandEvent) -> None:
-        cache_dir = get_image_cache_dir()
+        try:
+            cache_dir = get_image_cache_dir()
+        except Exception as e:
+            wx.MessageBox(str(e), "Fehler", wx.OK | wx.ICON_ERROR)
+            return
         confirm = wx.MessageBox(
             "Gesamten Bildcache wirklich leeren?\n\n"
             f"Ordner:\n{cache_dir}\n\n"
