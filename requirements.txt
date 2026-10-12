@@ -11,5 +11,8 @@ xhtml2pdf>=0.2.16
 # Image thumbnails / EXIF orientation
 Pillow>=10.0.0
 
+# Cross-platform user cache directory
+platformdirs>=4.0.0
+
 # GUI (native look on Windows, macOS, Linux)
 wxPython>=4.2.0

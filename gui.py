@@ -24,10 +24,13 @@ from seatable_reader import (
     SeaTableError,
     SeaTableSession,
     choose_default_view,
+    get_image_cache_dir,
     list_bases,
     list_view_names,
     load_participants,
     login,
+    prune_image_cache,
+    wipe_image_cache,
 )
 from version import get_version
 
@@ -263,9 +266,14 @@ class MainFrame(wx.Frame):
         row2.Add(btn_pdf, 0)
         sizer.Add(row2, 0, wx.EXPAND | wx.ALL, 6)
 
+        row_actions = wx.BoxSizer(wx.HORIZONTAL)
         self.create_btn = wx.Button(panel, label="Kontaktliste erstellen")
         self.create_btn.Bind(wx.EVT_BUTTON, self._on_create_list)
-        sizer.Add(self.create_btn, 0, wx.ALL, 16)
+        row_actions.Add(self.create_btn, 0, wx.RIGHT, 8)
+        self.clear_cache_btn = wx.Button(panel, label="Bildcache leeren")
+        self.clear_cache_btn.Bind(wx.EVT_BUTTON, self._on_clear_image_cache)
+        row_actions.Add(self.clear_cache_btn, 0)
+        sizer.Add(row_actions, 0, wx.ALL, 16)
 
         menubar = wx.MenuBar()
         help_menu = wx.Menu()
@@ -324,6 +332,41 @@ class MainFrame(wx.Frame):
                 if not path.lower().endswith(".pdf"):
                     path += ".pdf"
                 self.pdf_path.SetValue(path)
+
+    def _on_clear_image_cache(self, _event: wx.CommandEvent) -> None:
+        if self._busy:
+            wx.MessageBox(
+                "Der Bildcache kann nicht geleert werden, während eine "
+                "Kontaktliste erzeugt wird.",
+                "Bildcache",
+                wx.OK | wx.ICON_INFORMATION,
+            )
+            return
+        try:
+            cache_dir = get_image_cache_dir()
+        except Exception as e:
+            wx.MessageBox(str(e), "Fehler", wx.OK | wx.ICON_ERROR)
+            return
+        confirm = wx.MessageBox(
+            "Gesamten Bildcache wirklich leeren?\n\n"
+            f"Ordner:\n{cache_dir}\n\n"
+            "Beim nächsten Erzeugen einer Kontaktliste werden alle Bilder erneut "
+            "von SeaTable geladen.",
+            "Bildcache leeren",
+            wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+        )
+        if confirm != wx.YES:
+            return
+        try:
+            removed = wipe_image_cache(cache_dir)
+        except Exception as e:
+            wx.MessageBox(str(e), "Fehler", wx.OK | wx.ICON_ERROR)
+            return
+        wx.MessageBox(
+            f"Bildcache geleert ({removed} Dateien entfernt).",
+            "Bildcache",
+            wx.OK | wx.ICON_INFORMATION,
+        )
 
     def _on_refresh_bases(self, _event: wx.CommandEvent) -> None:
         self._load_bases()
@@ -499,6 +542,7 @@ class MainFrame(wx.Frame):
 
         self._busy = True
         self.create_btn.Disable()
+        self.clear_cache_btn.Disable()
         progress_dlg = ProgressDialog(self)
 
         def on_progress(message: str, current: int, total: int) -> None:
@@ -551,6 +595,7 @@ class MainFrame(wx.Frame):
             progress_dlg.EndModal(wx.ID_CANCEL if error or pdf is None else wx.ID_OK)
         self._busy = False
         self.create_btn.Enable()
+        self.clear_cache_btn.Enable()
 
         if isinstance(error, SeaTableCancelled):
             wx.MessageBox("Vorgang abgebrochen.", "Abbruch", wx.OK | wx.ICON_INFORMATION)
@@ -600,6 +645,10 @@ def _prompt_login() -> SeaTableSession | None:
 
 def run_gui() -> None:
     app = wx.App()
+    try:
+        prune_image_cache()
+    except Exception:
+        pass
     session = _prompt_login()
     if session is None:
         return

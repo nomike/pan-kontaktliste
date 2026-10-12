@@ -27,15 +27,19 @@ from seatable_reader import (
     SeaTableCancelled,
     SeaTableError,
     SeaTableSession,
+    _cache_identity_from_url,
     _coerce_view_list,
     _image_urls_from_cell,
     _pick_view_name,
     _truthy,
+    cache_path_for_url,
     choose_default_view,
     list_bases,
     list_view_names,
     load_participants,
     login,
+    prune_image_cache,
+    wipe_image_cache,
 )
 
 
@@ -135,6 +139,8 @@ def test_load_participants_reports_progress_and_honours_cancel(
 
     out_dir = tmp_path / "out"
     out_dir.mkdir()
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
     with pytest.raises(SeaTableCancelled):
         load_participants(
             session,
@@ -142,6 +148,7 @@ def test_load_participants_reports_progress_and_honours_cancel(
             "Base",
             placeholder_path,
             image_output_dir=out_dir,
+            image_cache_dir=cache_dir,
             progress=progress,
             cancel_event=cancel,
         )
@@ -253,8 +260,15 @@ def test_failed_png_download_keeps_intact_placeholder(
 
     out_dir = tmp_path / "out"
     out_dir.mkdir()
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
     result = load_participants(
-        session, 1, "Base", placeholder_path, image_output_dir=out_dir
+        session,
+        1,
+        "Base",
+        placeholder_path,
+        image_output_dir=out_dir,
+        image_cache_dir=cache_dir,
     )
     assert len(result) == 1
     image = Path(result[0]["image_path"])
@@ -262,6 +276,7 @@ def test_failed_png_download_keeps_intact_placeholder(
     assert image.read_bytes() == placeholder_path.read_bytes()
     assert image.stat().st_size > 0
     assert not (out_dir / "teilnehmer_0.png.partial").exists()
+    assert not list(cache_dir.glob("*.partial"))
 
 
 def test_load_participants_consent_and_partial_fields(
@@ -304,8 +319,15 @@ def test_load_participants_consent_and_partial_fields(
 
     out_dir = tmp_path / "out"
     out_dir.mkdir()
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
     result = load_participants(
-        session, 10, "PAN Winter", placeholder_path, image_output_dir=out_dir
+        session,
+        10,
+        "PAN Winter",
+        placeholder_path,
+        image_output_dir=out_dir,
+        image_cache_dir=cache_dir,
     )
     assert len(result) == 1
     p = result[0]
@@ -315,6 +337,7 @@ def test_load_participants_consent_and_partial_fields(
     assert "nachname" not in p
     assert Path(p["image_path"]).is_file()
     assert Path(p["image_path"]).read_bytes() == b"fake-image"
+    assert any(cache_dir.iterdir())
 
 
 def test_load_participants_placeholder_without_image_consent(
@@ -332,8 +355,15 @@ def test_load_participants_placeholder_without_image_consent(
 
     out_dir = tmp_path / "out"
     out_dir.mkdir()
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
     result = load_participants(
-        session, 1, "Base", placeholder_path, image_output_dir=out_dir
+        session,
+        1,
+        "Base",
+        placeholder_path,
+        image_output_dir=out_dir,
+        image_cache_dir=cache_dir,
     )
     assert len(result) == 1
     assert Path(result[0]["image_path"]).read_bytes() == placeholder_path.read_bytes()
@@ -352,8 +382,17 @@ def test_load_participants_propagates_view_list_error(
     session = SeaTableSession(account=account, server_url="https://cloud.seatable.io")
     out_dir = tmp_path / "out"
     out_dir.mkdir()
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
     with pytest.raises(SeaTableError, match="views down"):
-        load_participants(session, 1, "Base", placeholder_path, image_output_dir=out_dir)
+        load_participants(
+            session,
+            1,
+            "Base",
+            placeholder_path,
+            image_output_dir=out_dir,
+            image_cache_dir=cache_dir,
+        )
 
 
 def test_choose_default_view_preferences() -> None:
@@ -425,3 +464,273 @@ def test_list_view_names_resolves_table() -> None:
     names = list_view_names(session, 1, "Base")
     assert names == ["Default View", "Kontaktliste"]
     base.list_views.assert_called_once_with("Anmeldung")
+
+
+def test_cache_identity_includes_dtable_uuid() -> None:
+    url_a = (
+        "https://cloud.seatable.io/workspace/1/asset/"
+        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/images/2026-01/photo.jpg"
+    )
+    url_b = (
+        "https://cloud.seatable.io/workspace/1/asset/"
+        "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/images/2026-01/photo.jpg"
+    )
+    assert _cache_identity_from_url(url_a) == (
+        "cloud.seatable.io/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/images/2026-01/photo.jpg"
+    )
+    assert _cache_identity_from_url(url_a) != _cache_identity_from_url(url_b)
+    path_a = cache_path_for_url(url_a, Path("/tmp/cache"))
+    path_b = cache_path_for_url(url_b, Path("/tmp/cache"))
+    assert path_a.name != path_b.name
+    assert path_a.suffix == ".jpg"
+
+    relative = "/images/2026-01/photo.jpg"
+    id_a = _cache_identity_from_url(
+        relative,
+        dtable_uuid="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        server_url="https://cloud.seatable.io",
+    )
+    id_b = _cache_identity_from_url(
+        relative,
+        dtable_uuid="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        server_url="https://cloud.seatable.io",
+    )
+    assert id_a != id_b
+    assert "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" in id_a
+
+    # UUID-less /asset/images/... must still incorporate the open base's UUID.
+    bare_asset = "https://cloud.seatable.io/workspace/1/asset/images/2026-01/photo.jpg"
+    bare_a = _cache_identity_from_url(
+        bare_asset,
+        dtable_uuid="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        server_url="https://cloud.seatable.io",
+    )
+    bare_b = _cache_identity_from_url(
+        bare_asset,
+        dtable_uuid="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        server_url="https://cloud.seatable.io",
+    )
+    assert bare_a != bare_b
+    assert "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" in bare_a
+
+
+def test_image_cache_hit_skips_download(
+    tmp_path: Path, placeholder_path: Path
+) -> None:
+    url = (
+        "https://cloud.seatable.io/workspace/1/asset/"
+        "11111111-1111-1111-1111-111111111111/images/2026-01/a.jpg"
+    )
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    cached = cache_path_for_url(
+        url,
+        cache_dir,
+        server_url="https://cloud.seatable.io",
+    )
+    cached.write_bytes(b"cached-bytes")
+
+    base = MagicMock()
+    base.get_metadata.return_value = {
+        "tables": [{"name": "T", "columns": [{"name": CONSENT_LIST}]}]
+    }
+    base.list_views.return_value = []
+    base.list_rows.return_value = [
+        _row(**{CONSENT_BILD: True, DATA_BILD: [url], DATA_RUFNAME: "Cached"})
+    ]
+    account = MagicMock()
+    account.get_base.return_value = base
+    session = SeaTableSession(account=account, server_url="https://cloud.seatable.io")
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    result = load_participants(
+        session,
+        1,
+        "Base",
+        placeholder_path,
+        image_output_dir=out_dir,
+        image_cache_dir=cache_dir,
+    )
+    assert Path(result[0]["image_path"]).read_bytes() == b"cached-bytes"
+    base.download_file.assert_not_called()
+    base.get_file_download_link.assert_not_called()
+
+
+def test_image_cache_expired_redownloads(
+    tmp_path: Path, placeholder_path: Path
+) -> None:
+    import os
+    import time
+
+    import seatable_reader as sr
+
+    url = (
+        "https://cloud.seatable.io/workspace/1/asset/"
+        "11111111-1111-1111-1111-111111111111/images/2026-01/a.jpg"
+    )
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    cached = cache_path_for_url(
+        url,
+        cache_dir,
+        server_url="https://cloud.seatable.io",
+    )
+    cached.write_bytes(b"stale")
+    old = time.time() - (sr.IMAGE_CACHE_TTL_S + 60)
+    os.utime(cached, (old, old))
+
+    base = MagicMock()
+    base.get_metadata.return_value = {
+        "tables": [{"name": "T", "columns": [{"name": CONSENT_LIST}]}]
+    }
+    base.list_views.return_value = []
+    base.list_rows.return_value = [
+        _row(**{CONSENT_BILD: True, DATA_BILD: [url], DATA_RUFNAME: "Stale"})
+    ]
+
+    def fake_download(u: str, path: str) -> None:
+        Path(path).write_bytes(b"fresh")
+
+    base.download_file.side_effect = fake_download
+    account = MagicMock()
+    account.get_base.return_value = base
+    session = SeaTableSession(account=account, server_url="https://cloud.seatable.io")
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    result = load_participants(
+        session,
+        1,
+        "Base",
+        placeholder_path,
+        image_output_dir=out_dir,
+        image_cache_dir=cache_dir,
+    )
+    assert Path(result[0]["image_path"]).read_bytes() == b"fresh"
+    assert cached.read_bytes() == b"fresh"
+    base.download_file.assert_called_once()
+
+
+def test_prune_and_wipe_image_cache(tmp_path: Path) -> None:
+    import os
+    import time
+
+    import seatable_reader as sr
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    fresh = cache_dir / "fresh.jpg"
+    stale = cache_dir / "stale.jpg"
+    fresh_partial = cache_dir / "x.jpg.abc123.partial"
+    abandoned_partial = cache_dir / "y.jpg.def456.partial"
+    fresh.write_bytes(b"ok")
+    stale.write_bytes(b"old")
+    fresh_partial.write_bytes(b"tmp")
+    abandoned_partial.write_bytes(b"tmp")
+    old = time.time() - (sr.IMAGE_CACHE_TTL_S + 10)
+    os.utime(stale, (old, old))
+    os.utime(abandoned_partial, (time.time() - (sr.PARTIAL_MAX_AGE_S + 10),) * 2)
+
+    removed = prune_image_cache(cache_dir)
+    assert removed == 2
+    assert fresh.exists()
+    assert fresh_partial.exists()
+    assert not stale.exists()
+    assert not abandoned_partial.exists()
+
+    assert wipe_image_cache(cache_dir) == 2
+    assert not fresh.exists()
+    assert not fresh_partial.exists()
+
+
+def test_image_cache_dir_is_owner_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
+    import seatable_reader as sr
+
+    if os.name != "posix":
+        pytest.skip("owner-only chmod is POSIX-specific")
+
+    root = tmp_path / "cache-root"
+    monkeypatch.setattr(sr, "user_cache_dir", lambda *a, **k: str(root))
+    cache = sr.get_image_cache_dir()
+    assert cache.is_dir()
+    assert (cache.stat().st_mode & 0o777) == 0o700
+
+
+def test_fresh_cache_copy_race_falls_back_to_download(
+    tmp_path: Path, placeholder_path: Path
+) -> None:
+    """If a fresh cache file disappears before copy, re-download instead of placeholder."""
+    url = (
+        "https://cloud.seatable.io/workspace/1/asset/"
+        "11111111-1111-1111-1111-111111111111/images/2026-01/a.jpg"
+    )
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    cached = cache_path_for_url(url, cache_dir, server_url="https://cloud.seatable.io")
+    cached.write_bytes(b"about-to-vanish")
+
+    base = MagicMock()
+    base.get_metadata.return_value = {
+        "tables": [{"name": "T", "columns": [{"name": CONSENT_LIST}]}]
+    }
+    base.list_views.return_value = []
+    base.list_rows.return_value = [
+        _row(**{CONSENT_BILD: True, DATA_BILD: [url], DATA_RUFNAME: "Race"})
+    ]
+    base.dtable_uuid = "11111111-1111-1111-1111-111111111111"
+
+    real_copy = __import__("shutil").copy2
+    vanished = {"done": False}
+
+    def vanish_then_copy(src: object, dst: object, *args: object, **kwargs: object) -> object:
+        src_path = Path(str(src))
+        if not vanished["done"] and src_path == cached and src_path.exists():
+            vanished["done"] = True
+            src_path.unlink()
+            raise FileNotFoundError(str(src_path))
+        return real_copy(src, dst, *args, **kwargs)
+
+    def fake_download(u: str, path: str) -> None:
+        Path(path).write_bytes(b"recovered")
+
+    base.download_file.side_effect = fake_download
+    account = MagicMock()
+    account.get_base.return_value = base
+    session = SeaTableSession(account=account, server_url="https://cloud.seatable.io")
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    with patch("seatable_reader.shutil.copy2", side_effect=vanish_then_copy):
+        result = load_participants(
+            session,
+            1,
+            "Base",
+            placeholder_path,
+            image_output_dir=out_dir,
+            image_cache_dir=cache_dir,
+        )
+    assert Path(result[0]["image_path"]).read_bytes() == b"recovered"
+    base.download_file.assert_called()
+
+
+def test_wipe_image_cache_raises_on_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    kept = cache_dir / "kept.jpg"
+    kept.write_bytes(b"x")
+
+    real_unlink = Path.unlink
+
+    def flaky_unlink(self: Path, *args: object, **kwargs: object) -> None:
+        if self.name == "kept.jpg":
+            raise OSError("permission denied")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", flaky_unlink)
+    with pytest.raises(OSError, match="nicht vollständig"):
+        wipe_image_cache(cache_dir)
