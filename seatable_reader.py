@@ -378,7 +378,8 @@ def _asset_path_from_url(url: str) -> str | None:
 
 def get_image_cache_dir() -> Path:
     """Return the persistent image cache directory (created if missing)."""
-    root = Path(user_cache_dir(APP_CACHE_NAME, ensure_exists=True))
+    # appauthor=False avoids Windows nesting ``App\App\Cache``.
+    root = Path(user_cache_dir(APP_CACHE_NAME, appauthor=False, ensure_exists=True))
     cache_dir = root / "images"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
